@@ -14,28 +14,28 @@ void main() {
     useDesktopViewport(tester);
     await tester.pumpWidget(const ItClassApp());
 
-    expect(find.text('it教师'), findsOneWidget);
-    expect(find.text('学生端登录'), findsOneWidget);
-    expect(find.text('老师端登录'), findsOneWidget);
+    expect(find.text('IT教師'), findsOneWidget);
+    expect(find.text('学生ログイン'), findsOneWidget);
+    expect(find.text('先生ログイン'), findsOneWidget);
   });
 
   testWidgets('opens student workspace', (tester) async {
     useDesktopViewport(tester);
     await tester.pumpWidget(const ItClassApp());
 
-    await tester.tap(find.text('学生端登录'));
+    await tester.tap(find.text('学生ログイン'));
     await tester.pumpAndSettle();
 
     expect(find.text('AI会話'), findsWidgets);
     expect(find.text('コード採点'), findsWidgets);
-    expect(find.text('考试'), findsWidgets);
+    expect(find.text('テスト'), findsWidgets);
   });
 
   testWidgets('opens teacher workspace', (tester) async {
     useDesktopViewport(tester);
     await tester.pumpWidget(const ItClassApp());
 
-    await tester.tap(find.text('老师端登录'));
+    await tester.tap(find.text('先生ログイン'));
     await tester.pumpAndSettle();
 
     expect(find.text('AI回答不能（先生対応）'), findsWidgets);

@@ -1,15 +1,15 @@
 # itClass
 
-一个基于 Flutter 的跨端项目，当前已开启 Web、Android、iOS 三个平台。
+Flutter で構築したクロスプラットフォーム学習アプリです。Web、Android、iOS に対応しています。
 
-## 环境要求
+## 必要環境
 
 - Flutter 3.x
 - Dart SDK
-- Android Studio 或 Android SDK
-- Xcode（构建 iOS 需要 macOS）
+- Android Studio または Android SDK
+- Xcode（iOS ビルドには macOS が必要です）
 
-## 常用命令
+## よく使うコマンド
 
 ```bash
 flutter pub get
@@ -18,7 +18,7 @@ flutter run -d android
 flutter run -d ios
 ```
 
-## 构建命令
+## ビルドコマンド
 
 ```bash
 flutter build web
@@ -26,10 +26,12 @@ flutter build apk
 flutter build ios
 ```
 
-## 目录说明
+## ディレクトリ構成
 
-- `lib/`：Flutter 应用代码
-- `web/`：Web 端入口和图标
-- `android/`：Android 原生工程
-- `ios/`：iOS 原生工程
-- `test/`：自动化测试
+- `lib/`: Flutter アプリコード
+- `lib/pages/`: ログイン、学生画面、先生画面
+- `lib/shared/`: 共通ウィジェット、モデル、Mock データ
+- `web/`: Web エントリとアイコン
+- `android/`: Android ネイティブプロジェクト
+- `ios/`: iOS ネイティブプロジェクト
+- `test/`: 自動テスト

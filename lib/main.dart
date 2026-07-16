@@ -23,7 +23,6 @@ enum StudentSection {
 enum TeacherSection {
   pendingAi,
   codeScoring,
-  examAnalysis,
   studentMessages,
   relearning,
   system,

@@ -214,14 +214,6 @@ class _SideMenu extends StatelessWidget {
                 icon: const Icon(Icons.logout_rounded),
                 label: const Text('ログアウト'),
               ),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: () => Navigator.of(context).pushReplacement(
-                  MaterialPageRoute<void>(builder: (_) => const LoginPage()),
-                ),
-                icon: const Icon(Icons.swap_horiz_rounded),
-                label: const Text('ロール切替'),
-              ),
             ],
           ),
         ),
@@ -1485,8 +1477,8 @@ class _TeacherCodeReviewWorkspace extends StatelessWidget {
       padding: const EdgeInsets.all(24),
       children: [
         const _SectionHeader(
-          icon: Icons.rate_review_rounded,
-          title: 'コード採点管理',
+          icon: Icons.verified_rounded,
+          title: '成績確認',
           subtitle: '学生の提出内容、AIスコア、先生コメントを確認します。',
         ),
         const SizedBox(height: 16),
@@ -1506,39 +1498,6 @@ class _TeacherCodeReviewWorkspace extends StatelessWidget {
                   Text('コメント：${item.feedback}'),
                 ],
               ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _ExamAnalysisWorkspace extends StatelessWidget {
-  const _ExamAnalysisWorkspace({required this.reports});
-
-  final List<ExamReport> reports;
-
-  @override
-  Widget build(BuildContext context) {
-    final average =
-        reports.fold<int>(0, (sum, item) => sum + item.score) / reports.length;
-
-    return ListView(
-      padding: const EdgeInsets.all(24),
-      children: [
-        _SectionHeader(
-          icon: Icons.bar_chart_rounded,
-          title: 'テスト解答分析',
-          subtitle: '平均点 ${average.toStringAsFixed(1)}。弱点の把握に利用します。',
-        ),
-        const SizedBox(height: 16),
-        for (final report in reports)
-          Card(
-            child: ListTile(
-              leading: CircleAvatar(child: Text('${report.score}')),
-              title: Text(report.student),
-              subtitle: Text(report.weakness),
-              trailing: Text(report.recommendation),
             ),
           ),
       ],
@@ -1581,6 +1540,267 @@ class _TeacherChatWorkspace extends StatelessWidget {
   }
 }
 
+class _LearningUploadWorkspace extends StatelessWidget {
+  const _LearningUploadWorkspace();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        const _SectionHeader(
+          icon: Icons.cloud_upload_rounded,
+          title: 'AI再学習：学習資料アップロード',
+          subtitle: '教材、解説、サンプルコードをアップロードして AI 教室の学習資料に反映します。',
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'アップロード対象',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: const [
+                    _UploadTypeChip(
+                      icon: Icons.picture_as_pdf_rounded,
+                      label: 'PDF教材',
+                    ),
+                    _UploadTypeChip(
+                      icon: Icons.article_rounded,
+                      label: '解説テキスト',
+                    ),
+                    _UploadTypeChip(icon: Icons.code_rounded, label: 'サンプルコード'),
+                    _UploadTypeChip(icon: Icons.quiz_rounded, label: '練習問題'),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(22),
+                  decoration: BoxDecoration(
+                    color: _AppPalette.washBlue,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: _AppPalette.line),
+                  ),
+                  child: const Column(
+                    children: [
+                      Icon(
+                        Icons.upload_file_rounded,
+                        color: _AppPalette.sky,
+                        size: 42,
+                      ),
+                      SizedBox(height: 10),
+                      Text(
+                        'ここに教材ファイルを登録',
+                        style: TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'API 接続後に PDF / Markdown / Java ファイルをアップロードできます。',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: _AppPalette.muted),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                FilledButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('学習資料を追加'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        const _UploadedMaterialCard(
+          title: 'Java基礎：配列とArrayList',
+          status: '登録済み',
+          detail: 'AI教室の Java基礎 04 に反映予定',
+        ),
+        const _UploadedMaterialCard(
+          title: 'HashMap 練習問題セット',
+          status: '確認待ち',
+          detail: '先生確認後、練習問題として公開',
+        ),
+      ],
+    );
+  }
+}
+
+class _UploadTypeChip extends StatelessWidget {
+  const _UploadTypeChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Chip(
+      avatar: Icon(icon, size: 18, color: _AppPalette.teal),
+      label: Text(label),
+      backgroundColor: _AppPalette.wash,
+      side: const BorderSide(color: _AppPalette.line),
+    );
+  }
+}
+
+class _UploadedMaterialCard extends StatelessWidget {
+  const _UploadedMaterialCard({
+    required this.title,
+    required this.status,
+    required this.detail,
+  });
+
+  final String title;
+  final String status;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.description_rounded, color: _AppPalette.teal),
+        title: Text(title),
+        subtitle: Text(detail),
+        trailing: Text(status),
+      ),
+    );
+  }
+}
+
+class _UserRoleManagementWorkspace extends StatelessWidget {
+  const _UserRoleManagementWorkspace();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        const _SectionHeader(
+          icon: Icons.admin_panel_settings_rounded,
+          title: 'システム管理',
+          subtitle: 'ユーザー追加とロール設定を管理します。',
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'ユーザー追加',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 14),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final wide = constraints.maxWidth > 640;
+                    final fields = [
+                      const Expanded(
+                        child: TextField(
+                          decoration: InputDecoration(labelText: '名前'),
+                        ),
+                      ),
+                      const SizedBox(width: 10, height: 10),
+                      const Expanded(
+                        child: TextField(
+                          decoration: InputDecoration(labelText: 'メール'),
+                        ),
+                      ),
+                      const SizedBox(width: 10, height: 10),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: '学生',
+                          decoration: const InputDecoration(labelText: 'ロール'),
+                          items: const [
+                            DropdownMenuItem(value: '学生', child: Text('学生')),
+                            DropdownMenuItem(value: '先生', child: Text('先生')),
+                            DropdownMenuItem(value: '管理者', child: Text('管理者')),
+                          ],
+                          onChanged: (_) {},
+                        ),
+                      ),
+                    ];
+
+                    return Flex(
+                      direction: wide ? Axis.horizontal : Axis.vertical,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: fields,
+                    );
+                  },
+                ),
+                const SizedBox(height: 14),
+                FilledButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.person_add_alt_1_rounded),
+                  label: const Text('ユーザーを追加'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        const _UserRoleCard(
+          name: '佐藤',
+          email: 'student@example.com',
+          role: '学生',
+        ),
+        const _UserRoleCard(
+          name: 'Admin',
+          email: 'teacher@example.com',
+          role: '先生',
+        ),
+        const _UserRoleCard(
+          name: '中村',
+          email: 'nakamura@example.com',
+          role: '学生',
+        ),
+      ],
+    );
+  }
+}
+
+class _UserRoleCard extends StatelessWidget {
+  const _UserRoleCard({
+    required this.name,
+    required this.email,
+    required this.role,
+  });
+
+  final String name;
+  final String email;
+  final String role;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: CircleAvatar(child: Text(name.substring(0, 1))),
+        title: Text(name),
+        subtitle: Text(email),
+        trailing: Chip(
+          label: Text(role),
+          backgroundColor: role == '先生'
+              ? _AppPalette.washBlue
+              : _AppPalette.wash,
+          side: const BorderSide(color: _AppPalette.line),
+        ),
+      ),
+    );
+  }
+}
+
 class _SettingsWorkspace extends StatelessWidget {
   const _SettingsWorkspace({required this.role, required this.rows});
 
@@ -1607,26 +1827,6 @@ class _SettingsWorkspace extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _SimpleWorkspace extends StatelessWidget {
-  const _SimpleWorkspace({
-    required this.icon,
-    required this.title,
-    required this.body,
-  });
-
-  final IconData icon;
-  final String title;
-  final String body;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(24),
-      children: [_SectionHeader(icon: icon, title: title, subtitle: body)],
     );
   }
 }

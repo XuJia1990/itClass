@@ -11,8 +11,7 @@ const _studentMenu = [
 
 const _teacherMenu = [
   MenuItem(Icons.mark_chat_unread_rounded, 'AI回答不能（先生対応）', Color(0xFFF97316)),
-  MenuItem(Icons.grading_rounded, 'コード採点', Color(0xFF84CC16)),
-  MenuItem(Icons.analytics_rounded, 'テスト解答分析', Color(0xFFEF4444)),
+  MenuItem(Icons.verified_rounded, '成績確認', Color(0xFF84CC16)),
   MenuItem(Icons.chat_rounded, '学生チャット', Color(0xFF38BDF8)),
   MenuItem(Icons.auto_awesome_rounded, 'AI再学習', Color(0xFF8B5CF6)),
   MenuItem(Icons.admin_panel_settings_rounded, 'システム管理', Color(0xFF22C55E)),
@@ -480,7 +479,7 @@ const _teacherRequests = [
   ),
   TeacherRequest(
     student: '佐藤',
-    category: 'コード採点',
+    category: '成績確認',
     question: 'Two Sum は二重ループでも解けますか？なぜ先生は HashMap をすすめますか？',
     aiAnswer: 'HashMap の方が速いです。',
   ),
@@ -498,14 +497,6 @@ const _teacherRequests = [
     answered: true,
     teacherAnswer: 'インターフェースは能力や規約、抽象クラスは共通の親クラスと状態の共有に向いています。',
   ),
-];
-
-const _examReports = [
-  ExamReport('中村', 82, 'HTTP メソッドとステータスコードの理解を強化しましょう', 'REST API を復習'),
-  ExamReport('佐藤', 76, 'コレクションと Map の計算量がまだ不安定です', 'HashMap 問題を練習'),
-  ExamReport('小川', 91, 'オブジェクト指向はよく理解できています', 'インターフェース設計へ進む'),
-  ExamReport('takahashi', 68, '例外処理の問題でミスが多いです', 'try-catch を復習'),
-  ExamReport('kumagai', 88, '基礎文法は安定しています', 'Stream に進む'),
 ];
 
 const _codeReviewItems = [
@@ -559,9 +550,7 @@ String _teacherTitle(TeacherSection section) {
     case TeacherSection.pendingAi:
       return 'AI回答不能（先生対応）';
     case TeacherSection.codeScoring:
-      return 'コード採点';
-    case TeacherSection.examAnalysis:
-      return 'テスト解答分析';
+      return '成績確認';
     case TeacherSection.studentMessages:
       return '学生チャット';
     case TeacherSection.relearning:

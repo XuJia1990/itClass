@@ -25,7 +25,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   Widget build(BuildContext context) {
     return _ResponsiveShell(
       title: _teacherTitle(_section),
-      subtitle: '先生画面：質問対応、コード採点確認、テスト結果分析',
+      subtitle: '先生画面：質問対応、成績確認、学習資料管理、ユーザー管理',
       profileName: 'Admin（先生）',
       profileRole: '先生',
       activeIndex: TeacherSection.values.indexOf(_section),
@@ -79,19 +79,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
               ),
           ],
         );
-      case TeacherSection.examAnalysis:
-        return _HistoryPanel(
-          title: 'テスト解答分析',
-          children: [
-            for (final report in _examReports)
-              _CompactListCard(
-                title: report.student,
-                subtitle: '${report.score}点',
-                detail: report.weakness,
-                onTap: () {},
-              ),
-          ],
-        );
       case TeacherSection.codeScoring:
       case TeacherSection.relearning:
       case TeacherSection.system:
@@ -100,15 +87,15 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           title: '管理メニュー',
           children: [
             _CompactListCard(
-              title: '採点待ちコード',
+              title: '成績確認待ち',
               subtitle: '6件',
               detail: '配列、Map、例外処理の課題',
               onTap: () {},
             ),
             _CompactListCard(
-              title: 'AI再学習データ',
+              title: '学習資料アップロード',
               subtitle: '12件',
-              detail: '先生の回答を今後の AI 回答に反映予定',
+              detail: '教材、解説、サンプルコードを AI 学習用に登録',
               onTap: () {},
             ),
           ],
@@ -126,27 +113,12 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         );
       case TeacherSection.codeScoring:
         return _TeacherCodeReviewWorkspace(requests: _codeReviewItems);
-      case TeacherSection.examAnalysis:
-        return _ExamAnalysisWorkspace(reports: _examReports);
       case TeacherSection.studentMessages:
         return _TeacherChatWorkspace(student: _students[_selectedStudent]);
       case TeacherSection.relearning:
-        return const _SimpleWorkspace(
-          icon: Icons.auto_awesome_rounded,
-          title: 'AI再学習',
-          body:
-              '先生が回答した内容は再学習用データとして整理されます。バックエンド API 接続後は、質の高い回答をナレッジベースへ送信できます。',
-        );
+        return const _LearningUploadWorkspace();
       case TeacherSection.system:
-        return const _SettingsWorkspace(
-          role: 'システム管理',
-          rows: [
-            ('問題データ', 'Mock データ、API 接続待ち'),
-            ('ユーザー管理', '学生・先生ロール'),
-            ('確認フロー', 'AI が回答できない場合は先生へ連携'),
-            ('対応プラットフォーム', 'Web / iOS / Android'),
-          ],
-        );
+        return const _UserRoleManagementWorkspace();
       case TeacherSection.settings:
         return const _SettingsWorkspace(
           role: '先生画面設定',

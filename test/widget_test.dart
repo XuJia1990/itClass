@@ -25,6 +25,8 @@ void main() {
 
     await tester.tap(find.text('学生ログイン'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('ログイン'));
+    await tester.pumpAndSettle();
 
     expect(find.text('AI会話'), findsWidgets);
     expect(find.text('コード採点'), findsWidgets);
@@ -38,9 +40,11 @@ void main() {
 
     await tester.tap(find.text('先生ログイン'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('ログイン'));
+    await tester.pumpAndSettle();
 
     expect(find.text('AI回答不能（先生対応）'), findsWidgets);
-    expect(find.text('テスト解答分析'), findsWidgets);
+    expect(find.text('成績確認'), findsWidgets);
     expect(find.text('システム管理'), findsWidgets);
   });
 }

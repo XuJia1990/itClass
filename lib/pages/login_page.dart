@@ -80,27 +80,25 @@ class LoginPage extends StatelessWidget {
                                     subtitle: 'AI会話、学習資料、コード採点、テスト、先生への質問',
                                     icon: Icons.person_rounded,
                                     color: _AppPalette.teal,
-                                    onTap: () =>
-                                        Navigator.of(context).pushReplacement(
-                                          MaterialPageRoute<void>(
-                                            builder: (_) =>
-                                                const StudentHomePage(),
-                                          ),
-                                        ),
+                                    onTap: () => Navigator.of(context).push(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) =>
+                                            const StudentLoginPage(),
+                                      ),
+                                    ),
                                   ),
                                   const SizedBox(height: 14),
                                   _RoleLoginCard(
                                     title: '先生ログイン',
-                                    subtitle: '学生の質問対応、コード確認、テスト分析',
+                                    subtitle: '成績確認、学習資料アップロード、ユーザー管理',
                                     icon: Icons.admin_panel_settings_rounded,
                                     color: _AppPalette.sky,
-                                    onTap: () =>
-                                        Navigator.of(context).pushReplacement(
-                                          MaterialPageRoute<void>(
-                                            builder: (_) =>
-                                                const TeacherHomePage(),
-                                          ),
-                                        ),
+                                    onTap: () => Navigator.of(context).push(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) =>
+                                            const TeacherLoginPage(),
+                                      ),
+                                    ),
                                   ),
                                   const SizedBox(height: 18),
                                   const _LoginNote(),
@@ -379,6 +377,162 @@ class _LoginNote extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class StudentLoginPage extends StatelessWidget {
+  const StudentLoginPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return _RoleAuthPage(
+      title: '学生ログイン',
+      subtitle: 'AI教室、テスト、先生への質問を利用できます。',
+      icon: Icons.person_rounded,
+      color: _AppPalette.teal,
+      demoId: 'student@example.com',
+      destination: const StudentHomePage(),
+    );
+  }
+}
+
+class TeacherLoginPage extends StatelessWidget {
+  const TeacherLoginPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return _RoleAuthPage(
+      title: '先生ログイン',
+      subtitle: '成績確認、学習資料アップロード、ユーザー管理を利用できます。',
+      icon: Icons.admin_panel_settings_rounded,
+      color: _AppPalette.sky,
+      demoId: 'teacher@example.com',
+      destination: const TeacherHomePage(),
+    );
+  }
+}
+
+class _RoleAuthPage extends StatefulWidget {
+  const _RoleAuthPage({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+    required this.demoId,
+    required this.destination,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color color;
+  final String demoId;
+  final Widget destination;
+
+  @override
+  State<_RoleAuthPage> createState() => _RoleAuthPageState();
+}
+
+class _RoleAuthPageState extends State<_RoleAuthPage> {
+  late final TextEditingController _idController;
+  final _passwordController = TextEditingController(text: 'password');
+
+  @override
+  void initState() {
+    super.initState();
+    _idController = TextEditingController(text: widget.demoId);
+  }
+
+  @override
+  void dispose() {
+    _idController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 430),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(
+                      width: 54,
+                      height: 54,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: widget.color.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(widget.icon, color: widget.color, size: 30),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      widget.title,
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      widget.subtitle,
+                      style: const TextStyle(color: _AppPalette.muted),
+                    ),
+                    const SizedBox(height: 22),
+                    TextField(
+                      controller: _idController,
+                      decoration: const InputDecoration(
+                        labelText: 'ログインID',
+                        prefixIcon: Icon(Icons.mail_outline_rounded),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _passwordController,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'パスワード',
+                        prefixIcon: Icon(Icons.lock_outline_rounded),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    FilledButton.icon(
+                      onPressed: () => Navigator.of(context).pushReplacement(
+                        MaterialPageRoute<void>(
+                          builder: (_) => widget.destination,
+                        ),
+                      ),
+                      icon: const Icon(Icons.login_rounded),
+                      label: const Text('ログイン'),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      '現在はデモ認証です。API 接続後に実ログインへ切り替えます。',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: _AppPalette.muted, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

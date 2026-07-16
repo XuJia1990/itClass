@@ -10,10 +10,10 @@ class StudentHomePage extends StatefulWidget {
 class _StudentHomePageState extends State<StudentHomePage> {
   StudentSection _section = StudentSection.aiChat;
   int _selectedLesson = 0;
-  int _selectedExamQuestion = 0;
-  int? _selectedAnswer;
-  int? _lastExamScore;
+  int _selectedExamLesson = 0;
   String _selectedChatStudent = '佐藤';
+  final Map<String, int> _examAnswers = {};
+  final Set<String> _submittedExamQuestions = {};
 
   final _aiInput = TextEditingController();
   final _teacherInput = TextEditingController();
@@ -47,7 +47,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
       items: _studentMenu,
       onSelect: (index) {
         setState(() => _section = StudentSection.values[index]);
-        Navigator.of(context).maybePop();
       },
       onLogout: _logout,
       middle: _studentMiddlePanel(context),
@@ -85,7 +84,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
         );
       case StudentSection.learning:
         return _HistoryPanel(
-          title: 'AI教室：Java基礎',
+          title: 'AI教室：Java学習ロードマップ',
           children: [
             for (var i = 0; i < _lessons.length; i++)
               _CompactListCard(
@@ -99,19 +98,16 @@ class _StudentHomePageState extends State<StudentHomePage> {
         );
       case StudentSection.exam:
         return _HistoryPanel(
-          title: 'テスト問題',
-          actionLabel: _lastExamScore == null ? null : 'スコア $_lastExamScore',
+          title: 'テスト範囲',
+          actionLabel: _examProgressLabel,
           children: [
-            for (var i = 0; i < _examQuestions.length; i++)
+            for (var i = 0; i < _lessons.length; i++)
               _CompactListCard(
-                selected: _selectedExamQuestion == i,
-                title: '第 ${i + 1} 問',
-                subtitle: _examQuestions[i].topic,
-                detail: _examQuestions[i].question,
-                onTap: () => setState(() {
-                  _selectedExamQuestion = i;
-                  _selectedAnswer = null;
-                }),
+                selected: _selectedExamLesson == i,
+                title: _lessons[i].title,
+                subtitle: '10問',
+                detail: _lessons[i].summary,
+                onTap: () => setState(() => _selectedExamLesson = i),
               ),
           ],
         );
@@ -171,19 +167,29 @@ class _StudentHomePageState extends State<StudentHomePage> {
       case StudentSection.learning:
         return _LessonWorkspace(lesson: _lessons[_selectedLesson]);
       case StudentSection.exam:
+        final questions = _examQuestionsForLesson(
+          _lessons[_selectedExamLesson],
+        );
         return _ExamWorkspace(
-          question: _examQuestions[_selectedExamQuestion],
-          index: _selectedExamQuestion,
-          total: _examQuestions.length,
-          selectedAnswer: _selectedAnswer,
-          onSelect: (value) => setState(() => _selectedAnswer = value),
-          onNext: () => setState(() {
-            if (_selectedExamQuestion < _examQuestions.length - 1) {
-              _selectedExamQuestion++;
-              _selectedAnswer = null;
-            }
+          lesson: _lessons[_selectedExamLesson],
+          questions: questions,
+          selectedAnswers: {
+            for (var i = 0; i < questions.length; i++)
+              if (_examAnswers[_examKey(_selectedExamLesson, i)] != null)
+                i: _examAnswers[_examKey(_selectedExamLesson, i)]!,
+          },
+          submittedIndexes: {
+            for (var i = 0; i < questions.length; i++)
+              if (_submittedExamQuestions.contains(
+                _examKey(_selectedExamLesson, i),
+              ))
+                i,
+          },
+          onSelect: (questionIndex, answerIndex) => setState(() {
+            _examAnswers[_examKey(_selectedExamLesson, questionIndex)] =
+                answerIndex;
           }),
-          onSubmit: _submitExam,
+          onSubmit: (questionIndex) => _submitExam(questionIndex, questions),
         );
       case StudentSection.askTeacher:
         return _ChatWorkspace(
@@ -288,14 +294,48 @@ class _StudentHomePageState extends State<StudentHomePage> {
     );
   }
 
-  void _submitExam() {
-    final answer = _selectedAnswer;
+  String _examKey(int lessonIndex, int questionIndex) {
+    return '$lessonIndex:$questionIndex';
+  }
+
+  String? get _examProgressLabel {
+    final questions = _examQuestionsForLesson(_lessons[_selectedExamLesson]);
+    final submitted = _submittedCount(_selectedExamLesson, questions.length);
+    if (submitted == 0) return null;
+    return '回答 $submitted/${questions.length} · ${_examScore(_selectedExamLesson, questions)}点';
+  }
+
+  int _submittedCount(int lessonIndex, int total) {
+    var count = 0;
+    for (var i = 0; i < total; i++) {
+      if (_submittedExamQuestions.contains(_examKey(lessonIndex, i))) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  int _examScore(int lessonIndex, List<ExamQuestion> questions) {
+    if (questions.isEmpty) return 0;
+    var correct = 0;
+    for (var i = 0; i < questions.length; i++) {
+      final key = _examKey(lessonIndex, i);
+      if (_submittedExamQuestions.contains(key) &&
+          _examAnswers[key] == questions[i].answerIndex) {
+        correct++;
+      }
+    }
+    return ((correct / questions.length) * 100).round();
+  }
+
+  void _submitExam(int questionIndex, List<ExamQuestion> questions) {
+    final answer = _examAnswers[_examKey(_selectedExamLesson, questionIndex)];
     if (answer == null) return;
 
-    final current = _examQuestions[_selectedExamQuestion];
+    final current = questions[questionIndex];
     final correct = answer == current.answerIndex;
     setState(() {
-      _lastExamScore = correct ? 100 : 0;
+      _submittedExamQuestions.add(_examKey(_selectedExamLesson, questionIndex));
     });
 
     ScaffoldMessenger.of(context).showSnackBar(

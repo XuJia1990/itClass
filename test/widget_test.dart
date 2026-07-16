@@ -47,4 +47,35 @@ void main() {
     expect(find.text('成績確認'), findsWidgets);
     expect(find.text('システム管理'), findsWidgets);
   });
+
+  testWidgets('desktop side menu does not return to login page', (
+    tester,
+  ) async {
+    useDesktopViewport(tester);
+    await tester.pumpWidget(const ItClassApp());
+
+    await tester.tap(find.text('学生ログイン'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ログイン'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('AI教室'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('学生ログイン'), findsNothing);
+    expect(find.text('AI教室：Java学習ロードマップ'), findsOneWidget);
+
+    await tester.tap(find.text('ログアウト'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('先生ログイン'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ログイン'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('学生チャット'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('先生ログイン'), findsNothing);
+    expect(find.text('学生'), findsWidgets);
+  });
 }

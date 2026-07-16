@@ -32,7 +32,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
       items: _teacherMenu,
       onSelect: (index) {
         setState(() => _section = TeacherSection.values[index]);
-        Navigator.of(context).maybePop();
       },
       onLogout: _logout,
       middle: _teacherMiddlePanel(),

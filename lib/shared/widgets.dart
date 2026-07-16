@@ -84,7 +84,10 @@ class _ResponsiveShell extends StatelessWidget {
               profileRole: profileRole,
               items: items,
               activeIndex: activeIndex,
-              onSelect: onSelect,
+              onSelect: (index) {
+                onSelect(index);
+                Navigator.of(context).pop();
+              },
               onLogout: onLogout,
               compact: true,
             ),
@@ -1274,22 +1277,20 @@ class _ExerciseAnalysisCard extends StatelessWidget {
 
 class _ExamWorkspace extends StatelessWidget {
   const _ExamWorkspace({
-    required this.question,
-    required this.index,
-    required this.total,
-    required this.selectedAnswer,
+    required this.lesson,
+    required this.questions,
+    required this.selectedAnswers,
+    required this.submittedIndexes,
     required this.onSelect,
-    required this.onNext,
     required this.onSubmit,
   });
 
-  final ExamQuestion question;
-  final int index;
-  final int total;
-  final int? selectedAnswer;
-  final ValueChanged<int> onSelect;
-  final VoidCallback onNext;
-  final VoidCallback onSubmit;
+  final Lesson lesson;
+  final List<ExamQuestion> questions;
+  final Map<int, int> selectedAnswers;
+  final Set<int> submittedIndexes;
+  final void Function(int questionIndex, int answerIndex) onSelect;
+  final ValueChanged<int> onSubmit;
 
   @override
   Widget build(BuildContext context) {
@@ -1298,51 +1299,197 @@ class _ExamWorkspace extends StatelessWidget {
       children: [
         _SectionHeader(
           icon: Icons.quiz_rounded,
-          title: 'テスト演習 ${index + 1} / $total',
-          subtitle: question.topic,
+          title: '${lesson.title}：テスト演習',
+          subtitle: 'AI教室の大綱から出題 · ${questions.length}問',
         ),
         const SizedBox(height: 16),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(18),
+        for (
+          var questionIndex = 0;
+          questionIndex < questions.length;
+          questionIndex++
+        )
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: _ExamQuestionCard(
+              number: questionIndex + 1,
+              question: questions[questionIndex],
+              selectedAnswer: selectedAnswers[questionIndex],
+              submitted: submittedIndexes.contains(questionIndex),
+              onSelect: (answerIndex) => onSelect(questionIndex, answerIndex),
+              onSubmit: () => onSubmit(questionIndex),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _ExamQuestionCard extends StatelessWidget {
+  const _ExamQuestionCard({
+    required this.number,
+    required this.question,
+    required this.selectedAnswer,
+    required this.submitted,
+    required this.onSelect,
+    required this.onSubmit,
+  });
+
+  final int number;
+  final ExamQuestion question;
+  final int? selectedAnswer;
+  final bool submitted;
+  final ValueChanged<int> onSelect;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    final isCorrect = submitted && selectedAnswer == question.answerIndex;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                _StatusPill('第 $number 問'),
+                Text(
+                  question.topic,
+                  style: const TextStyle(
+                    color: _AppPalette.muted,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              question.question,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 16),
+            for (var i = 0; i < question.options.length; i++)
+              _AnswerOptionTile(
+                label: question.options[i],
+                selected: selectedAnswer == i,
+                onTap: () => onSelect(i),
+              ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                FilledButton.icon(
+                  onPressed: selectedAnswer == null ? null : onSubmit,
+                  icon: const Icon(Icons.check_rounded),
+                  label: Text(submitted ? '再採点' : '回答を提出'),
+                ),
+                if (submitted) _StatusPill(isCorrect ? '正解' : '要復習'),
+              ],
+            ),
+            if (submitted) ...[
+              const SizedBox(height: 12),
+              _InlineNotice(
+                tone: isCorrect ? _NoticeTone.success : _NoticeTone.warning,
+                title: isCorrect ? '正しいポイント' : '間違いの理由',
+                message: isCorrect
+                    ? question.explanation
+                    : '${question.explanation}\n正解：${question.options[question.answerIndex]}',
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+enum _NoticeTone { success, warning }
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF6FF),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFBFDBFE)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Color(0xFF1D4ED8),
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _InlineNotice extends StatelessWidget {
+  const _InlineNotice({
+    required this.tone,
+    required this.title,
+    required this.message,
+  });
+
+  final _NoticeTone tone;
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final success = tone == _NoticeTone.success;
+    final background = success
+        ? const Color(0xFFEFFAF5)
+        : const Color(0xFFFFFBEB);
+    final border = success ? const Color(0xFF86EFAC) : const Color(0xFFFDE68A);
+    final icon = success
+        ? Icons.check_circle_rounded
+        : Icons.error_outline_rounded;
+    final color = success ? const Color(0xFF047857) : const Color(0xFFB45309);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  question.question,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+                  title,
+                  style: TextStyle(color: color, fontWeight: FontWeight.w800),
                 ),
-                const SizedBox(height: 16),
-                for (var i = 0; i < question.options.length; i++)
-                  _AnswerOptionTile(
-                    label: question.options[i],
-                    selected: selectedAnswer == i,
-                    onTap: () => onSelect(i),
-                  ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    FilledButton.icon(
-                      onPressed: selectedAnswer == null ? null : onSubmit,
-                      icon: const Icon(Icons.check_rounded),
-                      label: const Text('回答を提出'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: onNext,
-                      icon: const Icon(Icons.navigate_next_rounded),
-                      label: const Text('次の問題'),
-                    ),
-                  ],
-                ),
+                const SizedBox(height: 4),
+                Text(message),
               ],
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -1623,9 +1770,9 @@ class _LearningUploadWorkspace extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         const _UploadedMaterialCard(
-          title: 'Java基礎：配列とArrayList',
+          title: 'コレクション：配列とArrayList',
           status: '登録済み',
-          detail: 'AI教室の Java基礎 04 に反映予定',
+          detail: 'AI教室の コレクション 04 に反映予定',
         ),
         const _UploadedMaterialCard(
           title: 'HashMap 練習問題セット',

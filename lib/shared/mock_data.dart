@@ -56,8 +56,8 @@ const _studentTopics = [
 
 const _lessons = [
   Lesson(
-    title: 'Java基礎 01：変数とデータ型',
-    level: 'Java基礎',
+    title: 'Java入門 01：変数とデータ型',
+    level: 'Java入門',
     summary: '値を入れる箱と、値の種類を学びます。',
     content:
         'Java の最初の一歩は「データをどこに保存するか」を理解することです。変数は値を入れる箱のようなものです。Java では箱を作るときに、何を入れる箱なのかを型で決めます。数値なら int や double、真偽値なら boolean、文字列なら String を使います。',
@@ -98,8 +98,8 @@ const _lessons = [
         '変数は値を保存する名前、型は保存できる値の種類です。Java は型を厳しく見るため、最初に「どんな値を扱うか」を考える習慣が大切です。',
   ),
   Lesson(
-    title: 'Java基礎 02：if と条件分岐',
-    level: 'Java基礎',
+    title: 'Java文法 02：if と条件分岐',
+    level: 'Java文法',
     summary: '条件によって処理を変える方法を学びます。',
     content:
         'if 文は「もし条件が正しければ、この処理をする」という書き方です。ログインできるか、点数が合格か、入力が空かどうかなど、実務でも毎日使います。',
@@ -135,8 +135,8 @@ const _lessons = [
         'if 文はプログラムの分かれ道です。条件式が true なら実行、false なら別の処理へ進みます。比較演算子と equals の使い分けを覚えましょう。',
   ),
   Lesson(
-    title: 'Java基礎 03：for と while',
-    level: 'Java基礎',
+    title: '制御構文 03：for と while',
+    level: '制御構文',
     summary: '同じ処理を繰り返す書き方を学びます。',
     content:
         '繰り返し処理は、一覧データを1件ずつ見るときに使います。for は回数が分かるとき、while は条件が続く間だけ繰り返したいときに向いています。',
@@ -170,8 +170,8 @@ const _lessons = [
     aiSummary: '繰り返しは「同じ作業を何度も行う」ための道具です。配列やリストを扱うときは、境界条件を間違えないことが一番大切です。',
   ),
   Lesson(
-    title: 'Java基礎 04：配列と ArrayList',
-    level: 'Java基礎',
+    title: 'コレクション 04：配列と ArrayList',
+    level: 'コレクション',
     summary: '複数の値をまとめて扱います。',
     content:
         '配列と ArrayList は、複数のデータをまとめるために使います。配列は長さが固定、ArrayList はあとから追加・削除しやすいのが特徴です。',
@@ -203,8 +203,8 @@ const _lessons = [
         '件数が固定なら配列、あとから増減するなら ArrayList と考えると分かりやすいです。初心者は length と size() の違いを必ず覚えましょう。',
   ),
   Lesson(
-    title: 'Java基礎 05：HashMap',
-    level: 'Java基礎',
+    title: 'コレクション 05：HashMap',
+    level: 'コレクション',
     summary: 'key から value をすばやく取得します。',
     content:
         'HashMap は「名前から点数を取り出す」「ID からユーザーを探す」ように、key を使って value を高速に取得したいときに使います。',
@@ -235,8 +235,8 @@ const _lessons = [
         'HashMap は key で素早く探すための道具です。二重ループを避けたい問題では、HashMap が解決のヒントになることが多いです。',
   ),
   Lesson(
-    title: 'Java基礎 06：クラスとオブジェクト',
-    level: 'Java基礎',
+    title: 'オブジェクト指向 06：クラスとオブジェクト',
+    level: 'オブジェクト指向',
     summary: 'データと処理をひとつにまとめます。',
     content:
         'クラスは設計図、オブジェクトは設計図から作られる実体です。学生クラスなら name や score をフィールドに持ち、study() のようなメソッドを持てます。',
@@ -265,8 +265,8 @@ const _lessons = [
     aiSummary: 'クラスは「何を持つか」と「何ができるか」をまとめた設計図です。大きなプログラムほど、クラス設計が読みやすさを左右します。',
   ),
   Lesson(
-    title: 'Java基礎 07：メソッド',
-    level: 'Java基礎',
+    title: 'メソッド設計 07：メソッド',
+    level: 'メソッド設計',
     summary: '処理を名前付きで再利用します。',
     content: 'メソッドは、よく使う処理をまとめて名前を付けたものです。引数で材料を受け取り、return で結果を返せます。',
     code: 'int add(int a, int b) {\n  return a + b;\n}',
@@ -293,8 +293,8 @@ const _lessons = [
     aiSummary: 'メソッドは処理を小さく分けるための道具です。入力は引数、出力は戻り値と考えると理解しやすくなります。',
   ),
   Lesson(
-    title: 'Java基礎 08：例外処理',
-    level: 'Java基礎',
+    title: 'エラー対応 08：例外処理',
+    level: 'エラー対応',
     summary: '実行中のエラーに対応します。',
     content:
         '例外は、プログラム実行中に起きる問題です。文字列を数値に変換できない、null を参照した、ファイルが見つからないなどがあります。',
@@ -323,8 +323,8 @@ const _lessons = [
     aiSummary: '例外処理は「失敗してもアプリを止めない」ために重要です。原因を隠さず、次に何をすればよいか分かる処理にしましょう。',
   ),
   Lesson(
-    title: 'Java基礎 09：インターフェース',
-    level: 'Java基礎',
+    title: '設計基礎 09：インターフェース',
+    level: '設計基礎',
     summary: 'クラスに共通の能力を約束させます。',
     content:
         'インターフェースは「このメソッドを必ず持つ」という約束を定義します。実装クラスは implements を使って、その約束を守ります。',
@@ -353,8 +353,8 @@ const _lessons = [
     aiSummary: 'インターフェースはチーム開発で特に役立ちます。「このクラスはこの操作ができる」と共通ルールを作れるからです。',
   ),
   Lesson(
-    title: 'Java基礎 10：REST API 入門',
-    level: 'Java基礎',
+    title: 'Web API 10：REST API 入門',
+    level: 'Web API',
     summary: 'Web アプリがサーバーと通信する考え方を学びます。',
     content:
         'REST API は、画面とサーバーがデータをやり取りする入口です。HTTP メソッド、URL、JSON、ステータスコードを理解すると、実務の Web 開発が分かりやすくなります。',
@@ -383,92 +383,122 @@ const _lessons = [
   ),
 ];
 
-const _examQuestions = [
-  ExamQuestion(
-    topic: 'Java基礎',
-    question: 'Java で文字列を表す型はどれですか？',
-    options: ['char', 'String', 'boolean', 'double'],
-    answerIndex: 1,
-    explanation: 'String は Java で文字列を表すクラスです。',
-  ),
-  ExamQuestion(
-    topic: 'コレクション',
-    question: 'ArrayList の要素数を取得するメソッドはどれですか？',
-    options: ['length', 'size()', 'count()', 'total()'],
-    answerIndex: 1,
-    explanation: 'コレクションは size()、配列は length を使います。',
-  ),
-  ExamQuestion(
-    topic: 'Map',
-    question: 'HashMap に指定した key が存在するか確認するメソッドはどれですか？',
-    options: ['hasKey', 'containsKey', 'includeKey', 'findKey'],
-    answerIndex: 1,
-    explanation: 'containsKey で指定した key の存在を確認できます。',
-  ),
-  ExamQuestion(
-    topic: '制御構文',
-    question: 'for 文で i < arr.length と書く主な目的は何ですか？',
-    options: ['範囲外アクセスを避ける', '配列を作成する', '並び替える', '型変換する'],
-    answerIndex: 0,
-    explanation: '配列の添字は 0 から始まるため、i < length にすると範囲外アクセスを避けられます。',
-  ),
-  ExamQuestion(
-    topic: 'オブジェクト指向',
-    question: 'Java のクラスから作られる実体を通常何と呼びますか？',
-    options: ['メソッド', 'パッケージ', 'オブジェクト', 'インターフェース'],
-    answerIndex: 2,
-    explanation: 'オブジェクトはクラスから作られる具体的な実体です。',
-  ),
-  ExamQuestion(
-    topic: 'インターフェース',
-    question: 'クラスがインターフェースを実装するときに使うキーワードはどれですか？',
-    options: ['extends', 'implements', 'interface', 'package'],
-    answerIndex: 1,
-    explanation: 'implements はインターフェースを実装するときに使います。',
-  ),
-  ExamQuestion(
-    topic: '例外',
-    question: '例外を捕捉するときによく使う構文はどれですか？',
-    options: ['if-else', 'try-catch', 'switch', 'for'],
-    answerIndex: 1,
-    explanation: 'try-catch は例外を捕捉して処理するために使います。',
-  ),
-  ExamQuestion(
-    topic: 'HTTP',
-    question: '通常、リソース取得に使う HTTP メソッドはどれですか？',
-    options: ['GET', 'POST', 'DELETE', 'PATCH'],
-    answerIndex: 0,
-    explanation: 'GET は意味としてリソース取得に使います。',
-  ),
-  ExamQuestion(
-    topic: 'HTTP',
-    question: '404 ステータスコードは通常何を表しますか？',
-    options: ['成功', '未認証', 'リソースが存在しない', 'サーバー内部エラー'],
-    answerIndex: 2,
-    explanation: '404 は要求したリソースが存在しないことを表します。',
-  ),
-  ExamQuestion(
-    topic: 'アルゴリズム',
-    question: 'HashMap の平均的な検索計算量はどれですか？',
-    options: ['O(1)', 'O(n)', 'O(log n)', 'O(n²)'],
-    answerIndex: 0,
-    explanation: 'HashMap は平均的に定数時間で検索できます。',
-  ),
-  ExamQuestion(
-    topic: 'Java基礎',
-    question: '文字列の内容比較で推奨される方法はどれですか？',
-    options: ['==', 'equals', '!=', 'compareAddress'],
-    answerIndex: 1,
-    explanation: 'equals は文字列の内容を比較します。== は参照を比較します。',
-  ),
-  ExamQuestion(
-    topic: 'キーワード',
-    question: 'final で変数を修飾すると通常どうなりますか？',
-    options: ['自由に変更できる', '一度だけ代入できる', '自動で並び替える', '文字列に変換する'],
-    answerIndex: 1,
-    explanation: 'final 変数は一度代入すると再代入できません。',
-  ),
-];
+List<ExamQuestion> _examQuestionsForLesson(Lesson lesson) {
+  final first = lesson.sections.first;
+  final second = lesson.sections.length > 1 ? lesson.sections[1] : first;
+  final topic = _lessonTopic(lesson);
+  final keyPoint = first.keyPoints.first;
+  final secondKeyPoint = second.keyPoints.first;
+
+  return [
+    ExamQuestion(
+      topic: topic,
+      question: lesson.exercise.question,
+      options: lesson.exercise.options,
+      answerIndex: lesson.exercise.answerIndex,
+      explanation: lesson.exercise.correctReason,
+    ),
+    ExamQuestion(
+      topic: topic,
+      question: '${lesson.title} の学習目標として最も近いものはどれですか？',
+      options: [lesson.summary, '画面の配色だけを決める', 'サーバーを購入する', '画像を圧縮する'],
+      answerIndex: 0,
+      explanation: lesson.summary,
+    ),
+    ExamQuestion(
+      topic: topic,
+      question: 'この単元のコード例として最も適切なものはどれですか？',
+      options: [
+        lesson.code,
+        '<style>.main { color: red; }</style>',
+        'SELECT * FROM users;',
+        'git push origin main',
+      ],
+      answerIndex: 0,
+      explanation: 'このコードは ${lesson.title} の中心になる考え方を表しています。',
+    ),
+    ExamQuestion(
+      topic: topic,
+      question: '${first.heading} で特に意識するポイントはどれですか？',
+      options: [
+        keyPoint,
+        'ファイル名を毎回ランダムにする',
+        'エラーを無視して進める',
+        '処理をすべて main に詰め込む',
+      ],
+      answerIndex: 0,
+      explanation: '$keyPoint を意識すると、${first.heading} を実務でも使いやすくなります。',
+    ),
+    ExamQuestion(
+      topic: topic,
+      question: '${second.heading} の理解として正しいものはどれですか？',
+      options: [secondKeyPoint, '条件を確認せずに実行する', '同じ名前を何度も使う', '戻り値の型を毎回変える'],
+      answerIndex: 0,
+      explanation: '$secondKeyPoint は ${second.heading} の基本ポイントです。',
+    ),
+    ExamQuestion(
+      topic: topic,
+      question: '初心者がこの単元で避けるべき学習方法はどれですか？',
+      options: [
+        '用語だけ暗記して、コードで試さない',
+        '短いコードを書いて動きを確認する',
+        '間違えた理由を説明する',
+        '標準答案と自分の答えを比べる',
+      ],
+      answerIndex: 0,
+      explanation: 'Java は書いて動かすことで理解が安定します。暗記だけでは応用しにくくなります。',
+    ),
+    ExamQuestion(
+      topic: topic,
+      question: 'この単元を復習するとき、最初に確認すべき内容はどれですか？',
+      options: [lesson.content, 'IDE のテーマカラー', 'パソコンの壁紙', 'GitHub のプロフィール画像'],
+      answerIndex: 0,
+      explanation: '単元本文は、概念、使いどころ、注意点をまとめています。',
+    ),
+    ExamQuestion(
+      topic: topic,
+      question: '標準答案として最も近いものはどれですか？',
+      options: [
+        lesson.exercise.standardAnswer,
+        '分からない場合は空欄で提出する',
+        'Java ではすべて文字列にする',
+        'エラーが出たらコードを削除する',
+      ],
+      answerIndex: 0,
+      explanation: '標準答案は、問題の意図に対して最短で正しい形を示しています。',
+    ),
+    ExamQuestion(
+      topic: topic,
+      question: 'AI に解説させるとき、良い質問のしかたはどれですか？',
+      options: [
+        '自分の答えと迷った理由を一緒に伝える',
+        '「全部教えて」だけ送る',
+        '問題文を読まずに質問する',
+        '正解だけを暗記する',
+      ],
+      answerIndex: 0,
+      explanation: '迷った理由を伝えると、AI は誤解しているポイントに合わせて説明できます。',
+    ),
+    ExamQuestion(
+      topic: topic,
+      question: 'この単元の AI まとめとして正しいものはどれですか？',
+      options: [
+        lesson.aiSummary,
+        'Java は実行せずに覚えるだけで十分です。',
+        '問題演習は不要です。',
+        '文法エラーは確認しなくてもよいです。',
+      ],
+      answerIndex: 0,
+      explanation: lesson.aiSummary,
+    ),
+  ];
+}
+
+String _lessonTopic(Lesson lesson) {
+  final separatorIndex = lesson.title.indexOf('：');
+  if (separatorIndex == -1) return lesson.title;
+  return lesson.title.substring(separatorIndex + 1);
+}
 
 const _teacherRequests = [
   TeacherRequest(

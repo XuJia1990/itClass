@@ -45,6 +45,9 @@ class Lesson {
     required this.summary,
     required this.content,
     required this.code,
+    required this.sections,
+    required this.exercise,
+    required this.aiSummary,
   });
 
   final String title;
@@ -52,6 +55,39 @@ class Lesson {
   final String summary;
   final String content;
   final String code;
+  final List<LessonSection> sections;
+  final LessonExercise exercise;
+  final String aiSummary;
+}
+
+class LessonSection {
+  const LessonSection({
+    required this.heading,
+    required this.body,
+    required this.keyPoints,
+  });
+
+  final String heading;
+  final String body;
+  final List<String> keyPoints;
+}
+
+class LessonExercise {
+  const LessonExercise({
+    required this.question,
+    required this.options,
+    required this.answerIndex,
+    required this.correctReason,
+    required this.wrongReason,
+    required this.standardAnswer,
+  });
+
+  final String question;
+  final List<String> options;
+  final int answerIndex;
+  final String correctReason;
+  final String wrongReason;
+  final String standardAnswer;
 }
 
 class ExamQuestion {
@@ -71,10 +107,37 @@ class ExamQuestion {
 }
 
 class ScoreResult {
-  const ScoreResult(this.score, this.tips);
+  const ScoreResult({
+    required this.score,
+    required this.examTitle,
+    required this.examDate,
+    required this.correctItems,
+    required this.deductions,
+    required this.standardAnswer,
+    required this.tips,
+  });
 
   final int score;
+  final String examTitle;
+  final String examDate;
+  final List<String> correctItems;
+  final List<ScoreDeduction> deductions;
+  final String standardAnswer;
   final List<String> tips;
+}
+
+class ScoreDeduction {
+  const ScoreDeduction({
+    required this.points,
+    required this.title,
+    required this.reason,
+    required this.fix,
+  });
+
+  final int points;
+  final String title;
+  final String reason;
+  final String fix;
 }
 
 class TeacherRequest {

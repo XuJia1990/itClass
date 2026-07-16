@@ -55,7 +55,7 @@ class LoginPage extends StatelessWidget {
                                 children: [
                                   _FeatureChip('AI質問解析'),
                                   _FeatureChip('コード採点'),
-                                  _FeatureChip('Java学習'),
+                                  _FeatureChip('AI教室'),
                                   _FeatureChip('テスト演習'),
                                   _FeatureChip('先生チャット'),
                                 ],

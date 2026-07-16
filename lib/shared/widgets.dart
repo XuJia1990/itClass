@@ -671,6 +671,41 @@ class _MessageBubble extends StatelessWidget {
   }
 }
 
+class _WorkspaceControlBar extends StatelessWidget {
+  const _WorkspaceControlBar({
+    required this.label,
+    required this.value,
+    required this.values,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String value;
+  final List<String> values;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _AppPalette.line),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.tune_rounded, color: _AppPalette.teal),
+          const SizedBox(width: 10),
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w900)),
+          const Spacer(),
+          _SubjectSelector(value: value, values: values, onChanged: onChanged),
+        ],
+      ),
+    );
+  }
+}
+
 class _CodeScoringWorkspace extends StatefulWidget {
   const _CodeScoringWorkspace({
     required this.controller,
@@ -686,16 +721,26 @@ class _CodeScoringWorkspace extends StatefulWidget {
 
 class _CodeScoringWorkspaceState extends State<_CodeScoringWorkspace> {
   ScoreResult? _result;
+  String _subject = 'Java基礎';
 
   @override
   Widget build(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
+        _WorkspaceControlBar(
+          label: '採点科目',
+          value: _subject,
+          values: const ['Java基礎', '配列とHashMap', 'オブジェクト指向'],
+          onChanged: (value) {
+            if (value != null) setState(() => _subject = value);
+          },
+        ),
+        const SizedBox(height: 14),
         _SectionHeader(
           icon: Icons.grading_rounded,
-          title: 'コード採点',
-          subtitle: 'Java コードを貼り付けると、まずルールベースで採点します。後から AI/API に接続できます。',
+          title: 'コード採点（テスト）',
+          subtitle: '日付・科目・正しい点・減点理由・標準答案をまとめて確認できます。',
         ),
         const SizedBox(height: 16),
         TextField(
@@ -739,25 +784,86 @@ class _ScoreCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'スコア：${result.score} / 100',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 10),
-            for (final tip in result.tips)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(Icons.check_circle_rounded, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(tip)),
-                  ],
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        result.examTitle,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '受験日：${result.examDate}',
+                        style: const TextStyle(color: _AppPalette.muted),
+                      ),
+                    ],
+                  ),
                 ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _AppPalette.wash,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: _AppPalette.line),
+                  ),
+                  child: Text(
+                    '${result.score}/100',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      color: _AppPalette.teal,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            _ResultBlock(
+              icon: Icons.check_circle_rounded,
+              title: '正しくできている点',
+              color: _AppPalette.teal,
+              items: result.correctItems,
+            ),
+            const SizedBox(height: 14),
+            _DeductionBlock(deductions: result.deductions),
+            const SizedBox(height: 14),
+            _ResultBlock(
+              icon: Icons.tips_and_updates_rounded,
+              title: '採点コメント',
+              color: _AppPalette.sky,
+              items: result.tips,
+            ),
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: _AppPalette.washBlue,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _AppPalette.line),
               ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '標準答案',
+                    style: TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 10),
+                  SelectableText(
+                    result.standardAnswer,
+                    style: const TextStyle(fontFamily: 'monospace'),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -765,16 +871,147 @@ class _ScoreCard extends StatelessWidget {
   }
 }
 
-class _LessonWorkspace extends StatelessWidget {
+class _ResultBlock extends StatelessWidget {
+  const _ResultBlock({
+    required this.icon,
+    required this.title,
+    required this.color,
+    required this.items,
+  });
+
+  final IconData icon;
+  final String title;
+  final Color color;
+  final List<String> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(width: 8),
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          for (final item in items)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('• ', style: TextStyle(color: color)),
+                  Expanded(
+                    child: Text(item, style: const TextStyle(height: 1.45)),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DeductionBlock extends StatelessWidget {
+  const _DeductionBlock({required this.deductions});
+
+  final List<ScoreDeduction> deductions;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = deductions.fold<int>(0, (sum, item) => sum + item.points);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7ED),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFFED7AA)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.report_problem_rounded,
+                color: Color(0xFFC2410C),
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '減点：-$total点',
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          for (final item in deductions)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '-${item.points}点：${item.title}',
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 3),
+                  Text('理由：${item.reason}'),
+                  Text('改善：${item.fix}'),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LessonWorkspace extends StatefulWidget {
   const _LessonWorkspace({required this.lesson});
 
   final Lesson lesson;
 
   @override
+  State<_LessonWorkspace> createState() => _LessonWorkspaceState();
+}
+
+class _LessonWorkspaceState extends State<_LessonWorkspace> {
+  String _subject = 'Java基礎';
+  bool _showSummary = false;
+  int? _selectedAnswer;
+  bool _submitted = false;
+
+  @override
   Widget build(BuildContext context) {
+    final lesson = widget.lesson;
+
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
+        _WorkspaceControlBar(
+          label: '学習言語',
+          value: _subject,
+          values: const ['Java基礎', 'Java文法', 'Web API'],
+          onChanged: (value) {
+            if (value != null) setState(() => _subject = value);
+          },
+        ),
+        const SizedBox(height: 14),
         _SectionHeader(
           icon: Icons.menu_book_rounded,
           title: lesson.title,
@@ -784,10 +1021,14 @@ class _LessonWorkspace extends StatelessWidget {
         Card(
           child: Padding(
             padding: const EdgeInsets.all(18),
-            child: Text(lesson.content),
+            child: Text(lesson.content, style: const TextStyle(height: 1.7)),
           ),
         ),
         const SizedBox(height: 16),
+        for (final section in lesson.sections) ...[
+          _LessonSectionCard(section: section),
+          const SizedBox(height: 12),
+        ],
         Card(
           child: Padding(
             padding: const EdgeInsets.all(18),
@@ -807,7 +1048,234 @@ class _LessonWorkspace extends StatelessWidget {
             ),
           ),
         ),
+        const SizedBox(height: 16),
+        FilledButton.icon(
+          onPressed: () => setState(() => _showSummary = !_showSummary),
+          icon: const Icon(Icons.auto_awesome_rounded),
+          label: Text(_showSummary ? 'AIまとめを閉じる' : 'AIまとめ・解析'),
+        ),
+        if (_showSummary) ...[
+          const SizedBox(height: 12),
+          _AiSummaryCard(summary: lesson.aiSummary),
+        ],
+        const SizedBox(height: 16),
+        _LessonExerciseCard(
+          exercise: lesson.exercise,
+          selectedAnswer: _selectedAnswer,
+          submitted: _submitted,
+          onSelect: (value) => setState(() {
+            _selectedAnswer = value;
+            _submitted = false;
+          }),
+          onSubmit: _selectedAnswer == null
+              ? null
+              : () => setState(() => _submitted = true),
+        ),
       ],
+    );
+  }
+}
+
+class _LessonSectionCard extends StatelessWidget {
+  const _LessonSectionCard({required this.section});
+
+  final LessonSection section;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              section.heading,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 8),
+            Text(section.body, style: const TextStyle(height: 1.7)),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final point in section.keyPoints)
+                  Chip(
+                    label: Text(point),
+                    backgroundColor: _AppPalette.wash,
+                    side: const BorderSide(color: _AppPalette.line),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AiSummaryCard extends StatelessWidget {
+  const _AiSummaryCard({required this.summary});
+
+  final String summary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _AppPalette.washBlue,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _AppPalette.line),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.auto_awesome_rounded, color: _AppPalette.sky),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'AIまとめ・解析',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 6),
+                Text(summary, style: const TextStyle(height: 1.6)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LessonExerciseCard extends StatelessWidget {
+  const _LessonExerciseCard({
+    required this.exercise,
+    required this.selectedAnswer,
+    required this.submitted,
+    required this.onSelect,
+    required this.onSubmit,
+  });
+
+  final LessonExercise exercise;
+  final int? selectedAnswer;
+  final bool submitted;
+  final ValueChanged<int> onSelect;
+  final VoidCallback? onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    final isCorrect = selectedAnswer == exercise.answerIndex;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _SectionHeader(
+              icon: Icons.edit_note_rounded,
+              title: '理解度チェック',
+              subtitle: '選択後に、正しい点と間違いの理由を確認できます。',
+            ),
+            const SizedBox(height: 16),
+            Text(
+              exercise.question,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 12),
+            for (var i = 0; i < exercise.options.length; i++)
+              _AnswerOptionTile(
+                label: exercise.options[i],
+                selected: selectedAnswer == i,
+                onTap: () => onSelect(i),
+              ),
+            const SizedBox(height: 10),
+            FilledButton.icon(
+              onPressed: onSubmit,
+              icon: const Icon(Icons.check_rounded),
+              label: const Text('練習を採点'),
+            ),
+            if (submitted) ...[
+              const SizedBox(height: 14),
+              _ExerciseAnalysisCard(
+                isCorrect: isCorrect,
+                correctReason: exercise.correctReason,
+                wrongReason: exercise.wrongReason,
+                standardAnswer: exercise.standardAnswer,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ExerciseAnalysisCard extends StatelessWidget {
+  const _ExerciseAnalysisCard({
+    required this.isCorrect,
+    required this.correctReason,
+    required this.wrongReason,
+    required this.standardAnswer,
+  });
+
+  final bool isCorrect;
+  final String correctReason;
+  final String wrongReason;
+  final String standardAnswer;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isCorrect ? _AppPalette.wash : const Color(0xFFFFF7ED),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isCorrect ? _AppPalette.teal : const Color(0xFFFED7AA),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isCorrect
+                    ? Icons.check_circle_rounded
+                    : Icons.error_outline_rounded,
+                color: isCorrect ? _AppPalette.teal : const Color(0xFFC2410C),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                isCorrect ? '正解です' : 'もう少しです',
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text('正しいポイント：$correctReason'),
+          if (!isCorrect) ...[
+            const SizedBox(height: 6),
+            Text('間違いの理由：$wrongReason'),
+          ],
+          const SizedBox(height: 10),
+          Text(
+            '標準答案：$standardAnswer',
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+        ],
+      ),
     );
   }
 }

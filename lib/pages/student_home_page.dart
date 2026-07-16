@@ -40,7 +40,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
   Widget build(BuildContext context) {
     return _ResponsiveShell(
       title: 'Eden AI プログラミング教師',
-      subtitle: '学生画面：AI質問、コード採点、Java学習、テスト演習',
+      subtitle: '学生画面：AI質問、コード採点、AI教室、テスト演習',
       profileName: '佐藤（学生）',
       profileRole: '学生',
       activeIndex: StudentSection.values.indexOf(_section),
@@ -52,13 +52,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
       onLogout: _logout,
       middle: _studentMiddlePanel(context),
       content: _studentContent(context),
-      topActions: [
-        _SubjectSelector(
-          value: 'Java基礎',
-          values: const ['Java基礎', 'オブジェクト指向', 'Web API'],
-          onChanged: (_) {},
-        ),
-      ],
+      topActions: const [],
     );
   }
 
@@ -91,7 +85,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
         );
       case StudentSection.learning:
         return _HistoryPanel(
-          title: 'Java学習資料',
+          title: 'AI教室：Java基礎',
           children: [
             for (var i = 0; i < _lessons.length; i++)
               _CompactListCard(
@@ -263,7 +257,35 @@ class _StudentHomePageState extends State<StudentHomePage> {
       tips.add('Java の文には通常セミコロンが必要です。文法を確認してください。');
     }
 
-    return ScoreResult(score.clamp(0, 100), tips);
+    final baseDeductions = <ScoreDeduction>[
+      const ScoreDeduction(
+        points: 4,
+        title: '入力チェックが少ない',
+        reason: 'nums が null の場合や要素数が 2 未満の場合の説明がありません。',
+        fix: '最初に null と length を確認すると、実務コードとしてより安全です。',
+      ),
+      const ScoreDeduction(
+        points: 2,
+        title: '計算量の説明が不足',
+        reason: 'HashMap を使っている理由は良いですが、O(n) である説明がコメントにありません。',
+        fix: '提出時に「時間計算量 O(n)、空間計算量 O(n)」を明記しましょう。',
+      ),
+    ];
+
+    return ScoreResult(
+      score: score.clamp(0, 94).toInt(),
+      examTitle: 'Java基礎・配列とHashMap実技テスト',
+      examDate: _todayLabel(),
+      correctItems: const [
+        'HashMap を使い、二重ループを避けられています。',
+        'target - nums[i] で必要な値を計算できています。',
+        '見つかった場合に添字の配列を返せています。',
+        '見つからない場合の戻り値も用意されています。',
+      ],
+      deductions: baseDeductions,
+      standardAnswer: _standardTwoSumAnswer,
+      tips: tips,
+    );
   }
 
   void _submitExam() {
@@ -292,4 +314,11 @@ class _StudentHomePageState extends State<StudentHomePage> {
       MaterialPageRoute<void>(builder: (_) => const LoginPage()),
     );
   }
+}
+
+String _todayLabel() {
+  final now = DateTime.now();
+  final month = now.month.toString().padLeft(2, '0');
+  final day = now.day.toString().padLeft(2, '0');
+  return '${now.year}/$month/$day';
 }

@@ -28,6 +28,7 @@ void main() {
 
     expect(find.text('AI会話'), findsWidgets);
     expect(find.text('コード採点'), findsWidgets);
+    expect(find.text('AI教室'), findsWidgets);
     expect(find.text('テスト'), findsWidgets);
   });
 

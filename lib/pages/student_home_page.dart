@@ -42,7 +42,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
       title: 'Eden AI プログラミング教師',
       subtitle: '学生画面：AI質問、コード採点、Java学習、テスト演習',
       profileName: '佐藤（学生）',
-      profileRole: 'Student',
+      profileRole: '学生',
       activeIndex: StudentSection.values.indexOf(_section),
       items: _studentMenu,
       onSelect: (index) {

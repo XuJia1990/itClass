@@ -40,21 +40,90 @@ class ItClassApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF0EA5E9),
-          primary: const Color(0xFF0F766E),
-          secondary: const Color(0xFFF59E0B),
+          seedColor: _AppPalette.sky,
+          primary: _AppPalette.teal,
+          secondary: _AppPalette.coral,
+          surface: Colors.white,
         ),
-        scaffoldBackgroundColor: const Color(0xFFF7F8FA),
+        scaffoldBackgroundColor: _AppPalette.canvas,
         useMaterial3: true,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.white,
+          foregroundColor: _AppPalette.ink,
+          elevation: 0,
+          centerTitle: false,
+          surfaceTintColor: Colors.transparent,
+        ),
         cardTheme: CardThemeData(
           elevation: 0,
           shape: RoundedRectangleBorder(
-            side: const BorderSide(color: Color(0xFFE5E7EB)),
+            side: const BorderSide(color: _AppPalette.line),
             borderRadius: BorderRadius.circular(8),
           ),
+          color: Colors.white,
+          surfaceTintColor: Colors.transparent,
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: _AppPalette.line),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: _AppPalette.line),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: _AppPalette.teal, width: 1.4),
+          ),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 13,
+          ),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            backgroundColor: _AppPalette.teal,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: _AppPalette.ink,
+            side: const BorderSide(color: _AppPalette.line),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+          ),
+        ),
+        textTheme: ThemeData.light().textTheme.apply(
+          bodyColor: _AppPalette.ink,
+          displayColor: _AppPalette.ink,
         ),
       ),
       home: const LoginPage(),
     );
   }
+}
+
+class _AppPalette {
+  const _AppPalette._();
+
+  static const canvas = Color(0xFFF6F8F7);
+  static const paper = Color(0xFFFFFFFF);
+  static const wash = Color(0xFFEFF8F6);
+  static const washBlue = Color(0xFFEAF4FF);
+  static const ink = Color(0xFF172033);
+  static const muted = Color(0xFF667085);
+  static const line = Color(0xFFE3E8EF);
+  static const teal = Color(0xFF159A8C);
+  static const sky = Color(0xFF4DA3D9);
+  static const coral = Color(0xFFF08A72);
 }

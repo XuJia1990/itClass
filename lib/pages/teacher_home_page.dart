@@ -27,7 +27,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
       title: _teacherTitle(_section),
       subtitle: '先生画面：質問対応、コード採点確認、テスト結果分析',
       profileName: 'Admin（先生）',
-      profileRole: 'Teacher',
+      profileRole: '先生',
       activeIndex: TeacherSection.values.indexOf(_section),
       items: _teacherMenu,
       onSelect: (index) {

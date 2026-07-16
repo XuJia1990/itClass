@@ -36,6 +36,7 @@ class _ResponsiveShell extends StatelessWidget {
 
         if (desktop) {
           return Scaffold(
+            backgroundColor: _AppPalette.canvas,
             body: Row(
               children: [
                 _SideMenu(
@@ -46,7 +47,14 @@ class _ResponsiveShell extends StatelessWidget {
                   onSelect: onSelect,
                   onLogout: onLogout,
                 ),
-                SizedBox(width: 300, child: middle),
+                Container(
+                  width: 310,
+                  decoration: const BoxDecoration(
+                    color: _AppPalette.paper,
+                    border: Border(right: BorderSide(color: _AppPalette.line)),
+                  ),
+                  child: middle,
+                ),
                 Expanded(
                   child: _ContentFrame(
                     title: title,
@@ -61,7 +69,15 @@ class _ResponsiveShell extends StatelessWidget {
         }
 
         return Scaffold(
-          appBar: AppBar(title: Text(title), actions: topActions),
+          backgroundColor: _AppPalette.canvas,
+          appBar: AppBar(
+            title: Text(title),
+            actions: topActions,
+            bottom: const PreferredSize(
+              preferredSize: Size.fromHeight(1),
+              child: Divider(height: 1, color: _AppPalette.line),
+            ),
+          ),
           drawer: Drawer(
             child: _SideMenu(
               profileName: profileName,
@@ -76,7 +92,7 @@ class _ResponsiveShell extends StatelessWidget {
           body: tablet
               ? Row(
                   children: [
-                    SizedBox(width: 300, child: middle),
+                    SizedBox(width: 310, child: middle),
                     Expanded(child: content),
                   ],
                 )
@@ -109,21 +125,24 @@ class _SideMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: compact ? null : 250,
-      color: const Color(0xFFD7ECFF),
+      width: compact ? null : 248,
+      decoration: const BoxDecoration(
+        color: Color(0xFFF0F7F5),
+        border: Border(right: BorderSide(color: _AppPalette.line)),
+      ),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 16, 14, 14),
+          padding: const EdgeInsets.fromLTRB(14, 18, 14, 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
                 children: [
                   Container(
-                    width: 44,
-                    height: 44,
+                    width: 46,
+                    height: 46,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF111827),
+                      color: _AppPalette.ink,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Icon(
@@ -140,11 +159,14 @@ class _SideMenu extends StatelessWidget {
                           profileName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w800),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            color: _AppPalette.ink,
+                          ),
                         ),
                         Text(
                           profileRole,
-                          style: const TextStyle(color: Color(0xFF475569)),
+                          style: const TextStyle(color: _AppPalette.muted),
                         ),
                       ],
                     ),
@@ -152,6 +174,34 @@ class _SideMenu extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 24),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.78),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: _AppPalette.line),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(
+                      Icons.local_florist_rounded,
+                      color: _AppPalette.teal,
+                      size: 20,
+                    ),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '今日の学習を続けましょう',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
               for (var i = 0; i < items.length; i++)
                 _MenuTile(
                   item: items[i],
@@ -194,36 +244,43 @@ class _MenuTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.only(bottom: 7),
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
         onTap: onTap,
         child: Container(
-          height: 46,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 11),
           decoration: BoxDecoration(
-            color: selected ? const Color(0xFFBFEAD9) : Colors.transparent,
+            color: selected ? Colors.white : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                      color: const Color(0xFF10B981).withValues(alpha: 0.14),
-                      blurRadius: 12,
-                      offset: const Offset(0, 6),
-                    ),
-                  ]
+            border: selected
+                ? Border.all(color: _AppPalette.teal.withValues(alpha: 0.20))
                 : null,
           ),
           child: Row(
             children: [
-              Icon(item.icon, size: 20, color: item.color),
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: selected
+                      ? item.color.withValues(alpha: 0.12)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(item.icon, size: 18, color: item.color),
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   item.label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                    fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
+                    color: selected ? _AppPalette.ink : _AppPalette.muted,
+                  ),
                 ),
               ),
             ],
@@ -250,10 +307,10 @@ class _HistoryPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.white,
+      color: _AppPalette.paper,
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -264,6 +321,7 @@ class _HistoryPanel extends StatelessWidget {
                       title,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
+                        color: _AppPalette.ink,
                       ),
                     ),
                   ),
@@ -274,13 +332,15 @@ class _HistoryPanel extends StatelessWidget {
               const SizedBox(height: 10),
               Expanded(
                 child: ListView(
+                  padding: EdgeInsets.zero,
                   children: [
                     if (onAction != null)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 12),
-                        child: FilledButton(
+                        child: FilledButton.icon(
                           onPressed: onAction,
-                          child: Text(actionLabel ?? '新規作成'),
+                          icon: const Icon(Icons.add_rounded),
+                          label: Text(actionLabel ?? '新規作成'),
                         ),
                       ),
                     ...children,
@@ -318,13 +378,21 @@ class _CompactListCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: Card(
-        color: selected ? const Color(0xFFEFFAF5) : Colors.white,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: selected ? _AppPalette.wash : Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected
+                ? _AppPalette.teal.withValues(alpha: 0.28)
+                : _AppPalette.line,
+          ),
+        ),
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(13),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -335,7 +403,10 @@ class _CompactListCard extends StatelessWidget {
                         title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w800),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          color: _AppPalette.ink,
+                        ),
                       ),
                     ),
                     if (badge != null)
@@ -347,7 +418,7 @@ class _CompactListCard extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: badge == '未回答'
                               ? const Color(0xFFFFF7ED)
-                              : const Color(0xFFEFFAF5),
+                              : _AppPalette.wash,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
@@ -373,10 +444,15 @@ class _CompactListCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   subtitle,
-                  style: const TextStyle(color: Color(0xFF64748B)),
+                  style: const TextStyle(color: _AppPalette.muted),
                 ),
                 const SizedBox(height: 6),
-                Text(detail, maxLines: 2, overflow: TextOverflow.ellipsis),
+                Text(
+                  detail,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(height: 1.35),
+                ),
               ],
             ),
           ),
@@ -405,11 +481,11 @@ class _ContentFrame extends StatelessWidget {
       child: Column(
         children: [
           Container(
-            height: 68,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            height: 76,
+            padding: const EdgeInsets.symmetric(horizontal: 24),
             decoration: const BoxDecoration(
-              color: Color(0xFFF3F6FE),
-              border: Border(bottom: BorderSide(color: Color(0xFFE5E7EB))),
+              color: Colors.white,
+              border: Border(bottom: BorderSide(color: _AppPalette.line)),
             ),
             child: Row(
               children: [
@@ -423,14 +499,15 @@ class _ContentFrame extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w900,
+                          color: _AppPalette.ink,
                         ),
                       ),
                       Text(
                         subtitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Color(0xFF64748B)),
+                        style: const TextStyle(color: _AppPalette.muted),
                       ),
                     ],
                   ),
@@ -439,7 +516,9 @@ class _ContentFrame extends StatelessWidget {
               ],
             ),
           ),
-          Expanded(child: child),
+          Expanded(
+            child: Container(color: _AppPalette.canvas, child: child),
+          ),
         ],
       ),
     );
@@ -461,14 +540,23 @@ class _SubjectSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(right: 12),
-      child: DropdownButton<String>(
-        value: value,
-        underline: const SizedBox.shrink(),
-        items: [
-          for (final item in values)
-            DropdownMenuItem<String>(value: item, child: Text(item)),
-        ],
-        onChanged: onChanged,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: _AppPalette.washBlue,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: _AppPalette.line),
+        ),
+        child: DropdownButton<String>(
+          value: value,
+          underline: const SizedBox.shrink(),
+          icon: const Icon(Icons.keyboard_arrow_down_rounded),
+          items: [
+            for (final item in values)
+              DropdownMenuItem<String>(value: item, child: Text(item)),
+          ],
+          onChanged: onChanged,
+        ),
       ),
     );
   }
@@ -497,13 +585,12 @@ class _ChatWorkspace extends StatelessWidget {
       children: [
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(24),
             children: [
-              Text(
-                title,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+              _SectionHeader(
+                icon: Icons.forum_rounded,
+                title: title,
+                subtitle: emptyHint,
               ),
               const SizedBox(height: 16),
               if (messages.isEmpty)
@@ -520,10 +607,10 @@ class _ChatWorkspace extends StatelessWidget {
           ),
         ),
         Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(14),
           decoration: const BoxDecoration(
             color: Colors.white,
-            border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
+            border: Border(top: BorderSide(color: _AppPalette.line)),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -535,9 +622,6 @@ class _ChatWorkspace extends StatelessWidget {
                   maxLines: 4,
                   decoration: InputDecoration(
                     hintText: 'あなたのプログラミングに関する質問を入力してください。',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
                   ),
                   onSubmitted: (_) => onSend(),
                 ),
@@ -574,14 +658,14 @@ class _MessageBubble extends StatelessWidget {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: isStudent
-              ? const Color(0xFFDCFCE7)
+              ? _AppPalette.wash
               : isTeacher
-              ? const Color(0xFFE0F2FE)
+              ? _AppPalette.washBlue
               : Colors.white,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFFE5E7EB)),
+          border: Border.all(color: _AppPalette.line),
         ),
-        child: Text(message.text),
+        child: Text(message.text, style: const TextStyle(height: 1.5)),
       ),
     );
   }
@@ -606,7 +690,7 @@ class _CodeScoringWorkspaceState extends State<_CodeScoringWorkspace> {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       children: [
         _SectionHeader(
           icon: Icons.grading_rounded,
@@ -621,7 +705,6 @@ class _CodeScoringWorkspaceState extends State<_CodeScoringWorkspace> {
           style: const TextStyle(fontFamily: 'monospace'),
           decoration: InputDecoration(
             filled: true,
-            fillColor: Colors.white,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
           ),
         ),
@@ -690,7 +773,7 @@ class _LessonWorkspace extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       children: [
         _SectionHeader(
           icon: Icons.menu_book_rounded,
@@ -751,7 +834,7 @@ class _ExamWorkspace extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       children: [
         _SectionHeader(
           icon: Icons.quiz_rounded,
@@ -828,9 +911,7 @@ class _AnswerOptionTile extends StatelessWidget {
             color: selected ? const Color(0xFFEFFAF5) : Colors.white,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: selected
-                  ? const Color(0xFF10B981)
-                  : const Color(0xFFE5E7EB),
+              color: selected ? const Color(0xFF10B981) : _AppPalette.line,
             ),
           ),
           child: Row(
@@ -867,7 +948,7 @@ class _TeacherRequestWorkspace extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       children: [
         _SectionHeader(
           icon: Icons.support_agent_rounded,
@@ -890,7 +971,7 @@ class _TeacherRequestWorkspace extends StatelessWidget {
                 const SizedBox(height: 12),
                 Text(
                   'AI の初期回答：${request.aiAnswer}',
-                  style: const TextStyle(color: Color(0xFF64748B)),
+                  style: const TextStyle(color: _AppPalette.muted),
                 ),
                 if (request.teacherAnswer != null) ...[
                   const Divider(height: 26),
@@ -908,7 +989,6 @@ class _TeacherRequestWorkspace extends StatelessWidget {
           decoration: InputDecoration(
             hintText: '学生への回答を入力してください。AI再学習資料としても保存されます。',
             filled: true,
-            fillColor: Colors.white,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
           ),
         ),
@@ -934,7 +1014,7 @@ class _TeacherCodeReviewWorkspace extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       children: [
         const _SectionHeader(
           icon: Icons.rate_review_rounded,
@@ -976,7 +1056,7 @@ class _ExamAnalysisWorkspace extends StatelessWidget {
         reports.fold<int>(0, (sum, item) => sum + item.score) / reports.length;
 
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       children: [
         _SectionHeader(
           icon: Icons.bar_chart_rounded,
@@ -1006,17 +1086,17 @@ class _TeacherChatWorkspace extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       children: [
         _SectionHeader(
           icon: Icons.chat_bubble_rounded,
-          title: '与 ${student.name} 聊天',
+          title: '${student.name} とチャット',
           subtitle: student.status,
         ),
         const SizedBox(height: 16),
         _MessageBubble(message: ChatMessage.student(student.lastQuestion)),
         _MessageBubble(
-          message: ChatMessage.teacher('我先看你的错误信息，再给你一个可执行的修改版本。'),
+          message: ChatMessage.teacher('まずエラー内容を確認し、実行できる修正版を提案します。'),
         ),
         const SizedBox(height: 16),
         TextField(
@@ -1025,7 +1105,6 @@ class _TeacherChatWorkspace extends StatelessWidget {
           decoration: InputDecoration(
             hintText: '先生の返信を入力',
             filled: true,
-            fillColor: Colors.white,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
           ),
         ),
@@ -1043,7 +1122,7 @@ class _SettingsWorkspace extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       children: [
         _SectionHeader(
           icon: Icons.settings_rounded,
@@ -1078,7 +1157,7 @@ class _SimpleWorkspace extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       children: [_SectionHeader(icon: icon, title: title, subtitle: body)],
     );
   }
@@ -1104,10 +1183,10 @@ class _SectionHeader extends StatelessWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: const Color(0xFFE0F2FE),
+            color: _AppPalette.washBlue,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(icon, color: const Color(0xFF0369A1)),
+          child: Icon(icon, color: _AppPalette.sky),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -1121,7 +1200,7 @@ class _SectionHeader extends StatelessWidget {
                 ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 4),
-              Text(subtitle, style: const TextStyle(color: Color(0xFF64748B))),
+              Text(subtitle, style: const TextStyle(color: _AppPalette.muted)),
             ],
           ),
         ),

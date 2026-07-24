@@ -1,7 +1,7 @@
 part of '../main.dart';
 
 const _studentMenu = [
-  MenuItem(Icons.forum_rounded, 'AI会話', Color(0xFF38BDF8)),
+  MenuItem(Icons.forum_rounded, '質問・AI回答', Color(0xFF38BDF8)),
   MenuItem(Icons.grading_rounded, 'コード採点', Color(0xFF84CC16)),
   MenuItem(Icons.menu_book_rounded, 'AI教室', Color(0xFFF59E0B)),
   MenuItem(Icons.quiz_rounded, 'テスト', Color(0xFFEF4444)),
@@ -13,18 +13,95 @@ const _teacherMenu = [
   MenuItem(Icons.mark_chat_unread_rounded, 'AI回答不能（先生対応）', Color(0xFFF97316)),
   MenuItem(Icons.verified_rounded, '成績確認', Color(0xFF84CC16)),
   MenuItem(Icons.chat_rounded, '学生チャット', Color(0xFF38BDF8)),
-  MenuItem(Icons.auto_awesome_rounded, 'AI再学習', Color(0xFF8B5CF6)),
+  MenuItem(Icons.cloud_upload_rounded, '教材・テストアップロード', Color(0xFF8B5CF6)),
   MenuItem(Icons.admin_panel_settings_rounded, 'システム管理', Color(0xFF22C55E)),
   MenuItem(Icons.settings_rounded, '設定', Color(0xFF475569)),
 ];
 
 const _students = [
-  StudentProfile('中村', '生徒 · オンライン', 'GET と POST の主な違いは何ですか？'),
-  StudentProfile('佐藤', '生徒 · コード提出済み', 'HashMap の検索が速い理由は何ですか？'),
-  StudentProfile('小川', '生徒 · テスト中', 'インターフェースと抽象クラスはどう選びますか？'),
-  StudentProfile('takahashi', '生徒 · 回答待ち', 'NullPointerException はどう調査しますか？'),
-  StudentProfile('kumagai', '生徒 · 復習中', 'final キーワードはどこで使いますか？'),
-  StudentProfile('yamada', '生徒 · オフライン', 'Java Stream と for 文はどちらを使うべきですか？'),
+  StudentProfile(
+    '中村',
+    '生徒 · オンライン',
+    'GET と POST の主な違いは何ですか？',
+    email: 'nakamura@example.com',
+    password: 'student123',
+    phone: '080-1111-2222',
+  ),
+  StudentProfile(
+    '佐藤',
+    '生徒 · コード提出済み',
+    'HashMap の検索が速い理由は何ですか？',
+    email: 'student@example.com',
+    password: 'password',
+    phone: '080-2222-3333',
+  ),
+  StudentProfile(
+    '小川',
+    '生徒 · テスト中',
+    'インターフェースと抽象クラスはどう選びますか？',
+    email: 'ogawa@example.com',
+    password: 'student123',
+    phone: '080-3333-4444',
+  ),
+  StudentProfile(
+    'takahashi',
+    '生徒 · 回答待ち',
+    'NullPointerException はどう調査しますか？',
+    email: 'takahashi@example.com',
+    password: 'student123',
+    phone: '080-4444-5555',
+  ),
+  StudentProfile(
+    'kumagai',
+    '生徒 · 復習中',
+    'final キーワードはどこで使いますか？',
+    email: 'kumagai@example.com',
+    password: 'student123',
+    phone: '080-5555-6666',
+  ),
+  StudentProfile(
+    'yamada',
+    '生徒 · オフライン',
+    'Java Stream と for 文はどちらを使うべきですか？',
+    email: 'yamada@example.com',
+    password: 'student123',
+    phone: '080-6666-7777',
+  ),
+];
+
+const _learningVideos = [
+  LearningVideo(
+    title: 'Java入門 01：変数とデータ型',
+    category: 'Java入門',
+    duration: '18:20',
+    progress: 0.92,
+    description: '授業録画：型、変数、String の使い方を確認します。',
+    videoUrl: 'https://samplelib.com/lib/preview/mp4/sample-5s.mp4',
+  ),
+  LearningVideo(
+    title: 'Java文法 02：if と条件分岐',
+    category: 'Java文法',
+    duration: '22:10',
+    progress: 0.48,
+    description: '授業録画：条件式、else、文字列比較を扱います。',
+    videoUrl: 'https://samplelib.com/lib/preview/mp4/sample-10s.mp4',
+  ),
+  LearningVideo(
+    title: 'コレクション 05：HashMap',
+    category: 'コレクション',
+    duration: '26:45',
+    progress: 0.18,
+    description: '授業録画：key-value、containsKey、Two Sum への応用。',
+    videoUrl: 'https://samplelib.com/lib/preview/mp4/sample-15s.mp4',
+  ),
+  LearningVideo(
+    title: 'Web API 10：REST API 入門',
+    category: 'Web API',
+    duration: '31:05',
+    progress: 0.0,
+    description: '授業録画：GET/POST、JSON、ステータスコードの基礎。',
+    videoUrl: 'https://samplelib.com/lib/preview/mp4/sample-20s.mp4',
+  ),
 ];
 
 const _studentTopics = [
@@ -494,6 +571,103 @@ List<ExamQuestion> _examQuestionsForLesson(Lesson lesson) {
   ];
 }
 
+List<ExamQuestion> _practiceQuestionsForLesson(Lesson lesson) {
+  final topic = _lessonTopic(lesson);
+  return [
+    ExamQuestion(
+      topic: topic,
+      question: '${lesson.title} を学んだあと、最初に自分で確認すべきことはどれですか？',
+      options: [
+        '短いコードを書いて、入力と出力を確認する',
+        '答えだけを暗記する',
+        'エラーを読まずに進める',
+        '別の単元へすぐ移る',
+      ],
+      answerIndex: 0,
+      explanation: '学んだ内容は短いコードで確認すると、理解が安定します。',
+    ),
+    ExamQuestion(
+      topic: topic,
+      question: '先生に質問するとき、AI と先生が状況を理解しやすい書き方はどれですか？',
+      options: [
+        '問題文、自分の答え、迷った理由を一緒に送る',
+        '「分かりません」だけを送る',
+        'スクリーンショットだけを送る',
+        '正解番号だけを聞く',
+      ],
+      answerIndex: 0,
+      explanation: '質問の背景があるほど、AI と先生は具体的に回答できます。',
+    ),
+  ];
+}
+
+List<ExamQuestion> _practiceQuestionsForVideo(LearningVideo video) {
+  return [
+    ExamQuestion(
+      topic: video.category,
+      question: '${video.title} を視聴したあと、最初に確認すべきことはどれですか？',
+      options: [
+        '動画で扱ったサンプルを自分で短く書いて試す',
+        '進捗だけ 100% にして終わる',
+        '分からない部分を飛ばして次へ進む',
+        '模範解答を読まずに暗記する',
+      ],
+      answerIndex: 0,
+      explanation: '動画学習後は、見た内容を小さなコードやメモで再現すると理解が定着します。',
+    ),
+    ExamQuestion(
+      topic: video.category,
+      question: '${video.description} この動画の復習方法として良いものはどれですか？',
+      options: [
+        '重要語句を確認し、文書学習または問題バンクで追加練習する',
+        '動画を閉じたら復習しない',
+        '質問があっても先生に送らない',
+        '正解番号だけ覚える',
+      ],
+      answerIndex: 0,
+      explanation: '動画、文書、問題バンクを同じ分類でつなげて復習すると、弱点を見つけやすくなります。',
+    ),
+  ];
+}
+
+List<ExamQuestion> _practiceQuestionsForSection(
+  Lesson lesson,
+  LessonSection section,
+) {
+  final topic = _lessonTopic(lesson);
+  final firstPoint = section.keyPoints.first;
+  final lastPoint = section.keyPoints.last;
+
+  return [
+    ExamQuestion(
+      topic: '${lesson.level} · ${section.heading}',
+      question: '${section.heading} の重要ポイントとして最も近いものはどれですか？',
+      options: [firstPoint, 'コードをすべて削除する', '条件を確認せずに実行する', '正解だけを覚えて理由を確認しない'],
+      answerIndex: 0,
+      explanation: '$firstPoint を理解すると、$topic の基礎が整理できます。',
+    ),
+    ExamQuestion(
+      topic: '${lesson.level} · ${section.heading}',
+      question: '${section.heading} を復習するときの良い進め方はどれですか？',
+      options: [
+        '本文を読み、サンプルコードを少し変えて試す',
+        '動画の進捗を見ずに完了扱いにする',
+        '分からない単語を放置する',
+        '模範解答を見ない',
+      ],
+      answerIndex: 0,
+      explanation: '本文、動画、練習問題をつなげると復習しやすくなります。',
+    ),
+    ExamQuestion(
+      topic: '${lesson.level} · ${section.heading}',
+      question: 'この小分類で最後に確認したい観点はどれですか？',
+      options: [lastPoint, '画面の色だけを見る', 'パスワードを共有する', 'テスト結果を保存しない'],
+      answerIndex: 0,
+      explanation: '$lastPoint は小分類を理解したか判断するための確認点です。',
+    ),
+  ];
+}
+
 String _lessonTopic(Lesson lesson) {
   final separatorIndex = lesson.title.indexOf('：');
   if (separatorIndex == -1) return lesson.title;
@@ -533,6 +707,94 @@ const _codeReviewItems = [
   CodeReviewItem('佐藤', 'Two Sum', 84, '動作します。時間計算量の説明を追加するとさらに良いです。'),
   CodeReviewItem('中村', '文字列反転', 72, '空文字列と境界条件に注意してください。'),
   CodeReviewItem('takahashi', '学生成績集計', 65, 'メソッド分割をもう少し明確にしましょう。'),
+];
+
+const _codeAssignments = [
+  CodeAssignment(
+    title: 'Two Sum 演習',
+    level: '配列とHashMap',
+    status: '採点済み',
+    summary: '配列から合計が target になる 2 つの添字を返します。',
+    prompt:
+        'int[] nums と int target が与えられます。nums[i] + nums[j] == target になる i と j を int[] で返してください。',
+    requirements: [
+      'HashMap を使って二重ループを避ける',
+      '見つかった場合は 2 つの添字を返す',
+      '見つからない場合は空配列を返す',
+      '時間計算量 O(n) を目指す',
+    ],
+    starterCode: _defaultCode,
+    standardAnswer: _standardTwoSumAnswer,
+    expectedKeywords: ['class', 'Map', 'HashMap', 'containsKey', 'return'],
+  ),
+  CodeAssignment(
+    title: 'String 反転',
+    level: '文字列',
+    status: '未提出',
+    summary: '文字列を逆順にして返すメソッドを実装します。',
+    prompt: 'String input を受け取り、文字を逆順にした String を返してください。null の場合は空文字を返します。',
+    requirements: [
+      'StringBuilder またはループを使う',
+      'null と空文字を処理する',
+      '元の文字列を変更せず新しい文字列を返す',
+    ],
+    starterCode: '''
+class Solution {
+  public String reverse(String input) {
+    // ここに実装してください
+    return "";
+  }
+}
+''',
+    standardAnswer: '''
+class Solution {
+  public String reverse(String input) {
+    if (input == null) {
+      return "";
+    }
+    return new StringBuilder(input).reverse().toString();
+  }
+}
+''',
+    expectedKeywords: ['class', 'String', 'StringBuilder', 'return'],
+  ),
+  CodeAssignment(
+    title: '学生成績集計',
+    level: 'メソッド設計',
+    status: '要復習',
+    summary: '点数配列から平均点を計算するメソッドを作ります。',
+    prompt:
+        'int[] scores を受け取り、平均点を double で返してください。配列が null または空の場合は 0.0 を返します。',
+    requirements: [
+      'null と空配列をチェックする',
+      'for 文で合計を計算する',
+      'double として平均を返す',
+      '処理をメソッド内に分かりやすくまとめる',
+    ],
+    starterCode: '''
+class ScoreCalculator {
+  public double average(int[] scores) {
+    // ここに実装してください
+    return 0.0;
+  }
+}
+''',
+    standardAnswer: '''
+class ScoreCalculator {
+  public double average(int[] scores) {
+    if (scores == null || scores.length == 0) {
+      return 0.0;
+    }
+    int sum = 0;
+    for (int score : scores) {
+      sum += score;
+    }
+    return (double) sum / scores.length;
+  }
+}
+''',
+    expectedKeywords: ['class', 'double', 'for', 'return'],
+  ),
 ];
 
 const _defaultCode = '''
@@ -584,7 +846,7 @@ String _teacherTitle(TeacherSection section) {
     case TeacherSection.studentMessages:
       return '学生チャット';
     case TeacherSection.relearning:
-      return 'AI再学習';
+      return '教材・テストアップロード';
     case TeacherSection.system:
       return 'システム管理';
     case TeacherSection.settings:

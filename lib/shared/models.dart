@@ -90,6 +90,24 @@ class LessonExercise {
   final String standardAnswer;
 }
 
+class LearningVideo {
+  const LearningVideo({
+    required this.title,
+    required this.category,
+    required this.duration,
+    required this.progress,
+    required this.description,
+    required this.videoUrl,
+  });
+
+  final String title;
+  final String category;
+  final String duration;
+  final double progress;
+  final String description;
+  final String videoUrl;
+}
+
 class ExamQuestion {
   const ExamQuestion({
     required this.topic,
@@ -140,6 +158,30 @@ class ScoreDeduction {
   final String fix;
 }
 
+class CodeAssignment {
+  const CodeAssignment({
+    required this.title,
+    required this.level,
+    required this.status,
+    required this.summary,
+    required this.prompt,
+    required this.requirements,
+    required this.starterCode,
+    required this.standardAnswer,
+    required this.expectedKeywords,
+  });
+
+  final String title;
+  final String level;
+  final String status;
+  final String summary;
+  final String prompt;
+  final List<String> requirements;
+  final String starterCode;
+  final String standardAnswer;
+  final List<String> expectedKeywords;
+}
+
 class TeacherRequest {
   const TeacherRequest({
     required this.student,
@@ -170,11 +212,21 @@ class TeacherRequest {
 }
 
 class StudentProfile {
-  const StudentProfile(this.name, this.status, this.lastQuestion);
+  const StudentProfile(
+    this.name,
+    this.status,
+    this.lastQuestion, {
+    required this.email,
+    required this.password,
+    required this.phone,
+  });
 
   final String name;
   final String status;
   final String lastQuestion;
+  final String email;
+  final String password;
+  final String phone;
 }
 
 class ExamReport {
@@ -199,3 +251,11 @@ class CodeReviewItem {
   final int score;
   final String feedback;
 }
+
+enum LearningMode { video, document, questionBank }
+
+enum UploadMaterialType { video, pdf, test }
+
+enum ProfileSettingSection { profile, avatar, password, contact, basicInfo }
+
+enum SystemManagementSection { createStudent, addExisting, allStudents }

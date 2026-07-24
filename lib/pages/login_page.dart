@@ -53,15 +53,13 @@ class LoginPage extends StatelessWidget {
                                 spacing: 10,
                                 runSpacing: 10,
                                 children: [
-                                  _FeatureChip('AI質問解析'),
-                                  _FeatureChip('コード採点'),
-                                  _FeatureChip('AI教室'),
-                                  _FeatureChip('テスト演習'),
-                                  _FeatureChip('先生チャット'),
+                                  _FeatureChip('授業動画'),
+                                  _FeatureChip('文書学習'),
+                                  _FeatureChip('問題バンク'),
+                                  _FeatureChip('テスト管理'),
+                                  _FeatureChip('先生サポート'),
                                 ],
                               ),
-                              const SizedBox(height: 28),
-                              const _LoginPreviewPanel(),
                             ],
                           ),
                         ),
@@ -77,7 +75,7 @@ class LoginPage extends StatelessWidget {
                                 children: [
                                   _RoleLoginCard(
                                     title: '学生ログイン',
-                                    subtitle: 'AI会話、学習資料、コード採点、テスト、先生への質問',
+                                    subtitle: '動画視聴、文書学習、問題演習、テスト、先生への質問',
                                     icon: Icons.person_rounded,
                                     color: _AppPalette.teal,
                                     onTap: () => Navigator.of(context).push(
@@ -90,7 +88,7 @@ class LoginPage extends StatelessWidget {
                                   const SizedBox(height: 14),
                                   _RoleLoginCard(
                                     title: '先生ログイン',
-                                    subtitle: '成績確認、学習資料アップロード、ユーザー管理',
+                                    subtitle: '授業動画、PDF、テストアップロード、ユーザー管理',
                                     icon: Icons.admin_panel_settings_rounded,
                                     color: _AppPalette.sky,
                                     onTap: () => Navigator.of(context).push(
@@ -155,115 +153,6 @@ class _BrandHeader extends StatelessWidget {
           ],
         ),
       ],
-    );
-  }
-}
-
-class _LoginPreviewPanel extends StatelessWidget {
-  const _LoginPreviewPanel();
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(
-              children: [
-                _MiniStatusTile(
-                  icon: Icons.psychology_alt_rounded,
-                  label: 'AI質問',
-                  value: '12件',
-                  color: _AppPalette.teal,
-                ),
-                SizedBox(width: 10),
-                _MiniStatusTile(
-                  icon: Icons.quiz_rounded,
-                  label: '本日の演習',
-                  value: '84点',
-                  color: _AppPalette.coral,
-                ),
-                SizedBox(width: 10),
-                _MiniStatusTile(
-                  icon: Icons.rate_review_rounded,
-                  label: '先生対応',
-                  value: '3件',
-                  color: _AppPalette.sky,
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: _AppPalette.wash,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: _AppPalette.line),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.auto_awesome_rounded, color: _AppPalette.teal),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'HashMap の検索が速い理由を、例題とコードで確認しましょう。',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MiniStatusTile extends StatelessWidget {
-  const _MiniStatusTile({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color.withValues(alpha: 0.18)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: _AppPalette.muted, fontSize: 12),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -389,7 +278,7 @@ class StudentLoginPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return _RoleAuthPage(
       title: '学生ログイン',
-      subtitle: 'AI教室、テスト、先生への質問を利用できます。',
+      subtitle: '授業動画、文書学習、問題演習、テスト、先生への質問を利用できます。',
       icon: Icons.person_rounded,
       color: _AppPalette.teal,
       demoId: 'student@example.com',
@@ -405,7 +294,7 @@ class TeacherLoginPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return _RoleAuthPage(
       title: '先生ログイン',
-      subtitle: '成績確認、学習資料アップロード、ユーザー管理を利用できます。',
+      subtitle: '授業動画、PDF、テストアップロード、成績確認、ユーザー管理を利用できます。',
       icon: Icons.admin_panel_settings_rounded,
       color: _AppPalette.sky,
       demoId: 'teacher@example.com',

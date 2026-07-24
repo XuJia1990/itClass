@@ -9,8 +9,11 @@ class StudentHomePage extends StatefulWidget {
 
 class _StudentHomePageState extends State<StudentHomePage> {
   StudentSection _section = StudentSection.aiChat;
+  LearningMode _learningMode = LearningMode.video;
+  ProfileSettingSection _settingSection = ProfileSettingSection.profile;
   int _selectedLesson = 0;
   int _selectedExamLesson = 0;
+  int _selectedCodeAssignment = 0;
   String _selectedChatStudent = '佐藤';
   final Map<String, int> _examAnswers = {};
   final Set<String> _submittedExamQuestions = {};
@@ -40,7 +43,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
   Widget build(BuildContext context) {
     return _ResponsiveShell(
       title: 'Eden AI プログラミング教師',
-      subtitle: '学生画面：AI質問、コード採点、AI教室、テスト演習',
+      subtitle: '学生画面：動画学習、文書学習、問題演習、テスト進捗',
       profileName: '佐藤（学生）',
       profileRole: '学生',
       activeIndex: StudentSection.values.indexOf(_section),
@@ -84,16 +87,69 @@ class _StudentHomePageState extends State<StudentHomePage> {
         );
       case StudentSection.learning:
         return _HistoryPanel(
-          title: 'AI教室：Java学習ロードマップ',
+          title: _learningModeLabel(_learningMode),
           children: [
-            for (var i = 0; i < _lessons.length; i++)
-              _CompactListCard(
-                selected: _selectedLesson == i,
-                title: _lessons[i].title,
-                subtitle: _lessons[i].level,
-                detail: _lessons[i].summary,
-                onTap: () => setState(() => _selectedLesson = i),
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text(
+                '学習タイプ',
+                style: TextStyle(
+                  color: _AppPalette.muted,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
+            ),
+            DropdownButtonFormField<LearningMode>(
+              initialValue: _learningMode,
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.tune_rounded),
+              ),
+              items: const [
+                DropdownMenuItem(
+                  value: LearningMode.video,
+                  child: Text('動画学習'),
+                ),
+                DropdownMenuItem(
+                  value: LearningMode.document,
+                  child: Text('文書学習'),
+                ),
+                DropdownMenuItem(
+                  value: LearningMode.questionBank,
+                  child: Text('問題バンク'),
+                ),
+              ],
+              onChanged: (mode) {
+                if (mode == null) return;
+                setState(() {
+                  _learningMode = mode;
+                  _selectedLesson = 0;
+                });
+              },
+            ),
+            const Divider(height: 24, color: _AppPalette.line),
+            if (_learningMode == LearningMode.video)
+              for (var i = 0; i < _learningVideos.length; i++)
+                _CompactListCard(
+                  selected: _selectedLesson == i,
+                  title: _learningVideos[i].title,
+                  subtitle:
+                      '${_learningVideos[i].category} · ${(_learningVideos[i].progress * 100).round()}%',
+                  detail: _learningVideos[i].description,
+                  onTap: () => setState(() => _selectedLesson = i),
+                )
+            else
+              for (var i = 0; i < _lessons.length; i++)
+                _CompactListCard(
+                  selected: _selectedLesson == i,
+                  title: _lessons[i].title,
+                  subtitle: _learningMode == LearningMode.document
+                      ? _lessons[i].level
+                      : '${_lessons[i].sections.length}小分類 · 各3問',
+                  detail: _learningMode == LearningMode.document
+                      ? _lessons[i].summary
+                      : '問題バンク：${_lessons[i].sections.map((e) => e.heading).join(' / ')}',
+                  onTap: () => setState(() => _selectedLesson = i),
+                ),
           ],
         );
       case StudentSection.exam:
@@ -105,7 +161,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
               _CompactListCard(
                 selected: _selectedExamLesson == i,
                 title: _lessons[i].title,
-                subtitle: '10問',
+                subtitle: _examLessonProgressLabel(i),
                 detail: _lessons[i].summary,
                 onTap: () => setState(() => _selectedExamLesson = i),
               ),
@@ -127,23 +183,27 @@ class _StudentHomePageState extends State<StudentHomePage> {
           ],
         );
       case StudentSection.codeScoring:
-      case StudentSection.settings:
         return _HistoryPanel(
-          title: _section == StudentSection.codeScoring ? 'コード履歴' : '設定',
+          title: 'コード課題',
           children: [
-            _CompactListCard(
-              title: 'Two Sum 演習',
-              subtitle: '採点済み',
-              detail: 'ループ、配列、条件分岐を使う総合問題',
-              onTap: () {},
-            ),
-            _CompactListCard(
-              title: 'String 反転',
-              subtitle: '未提出',
-              detail: 'StringBuilder または双方向ポインタで実装',
-              onTap: () {},
-            ),
+            for (var i = 0; i < _codeAssignments.length; i++)
+              _CompactListCard(
+                selected: _selectedCodeAssignment == i,
+                title: _codeAssignments[i].title,
+                subtitle:
+                    '${_codeAssignments[i].level} · ${_codeAssignments[i].status}',
+                detail: _codeAssignments[i].summary,
+                onTap: () => setState(() {
+                  _selectedCodeAssignment = i;
+                  _codeInput.text = _codeAssignments[i].starterCode;
+                }),
+              ),
           ],
+        );
+      case StudentSection.settings:
+        return _settingsMiddlePanel(
+          selected: _settingSection,
+          onSelect: (section) => setState(() => _settingSection = section),
         );
     }
   }
@@ -161,11 +221,16 @@ class _StudentHomePageState extends State<StudentHomePage> {
         );
       case StudentSection.codeScoring:
         return _CodeScoringWorkspace(
+          assignment: _codeAssignments[_selectedCodeAssignment],
           controller: _codeInput,
           onScore: _scoreCode,
         );
       case StudentSection.learning:
-        return _LessonWorkspace(lesson: _lessons[_selectedLesson]);
+        return _LearningWorkspace(
+          lesson: _lessons[_selectedLesson],
+          videos: _learningVideos,
+          mode: _learningMode,
+        );
       case StudentSection.exam:
         final questions = _examQuestionsForLesson(
           _lessons[_selectedExamLesson],
@@ -201,14 +266,15 @@ class _StudentHomePageState extends State<StudentHomePage> {
           onSend: _sendTeacherMessage,
         );
       case StudentSection.settings:
-        return _SettingsWorkspace(
-          role: '学生画面',
-          rows: const [
-            ('学習言語', 'Java'),
-            ('AI回答スタイル', 'ヒントを先に表示'),
-            ('テストモード', '演習モード'),
-            ('API状態', 'バックエンド接続待ち'),
-          ],
+        return _ProfileSettingsWorkspace(
+          roleTitle: '学生設定',
+          roleSubtitle: '名前、パスワード、アイコン、連絡先、メール、基本情報を変更できます。',
+          initialName: '佐藤',
+          initialEmail: 'student@example.com',
+          initialPhone: '080-2222-3333',
+          initialAvatar: 'student-avatar.png',
+          initialBasicInfo: 'Java基礎を学習中。HashMap と Web API を重点的に復習しています。',
+          section: _settingSection,
         );
     }
   }
@@ -237,25 +303,29 @@ class _StudentHomePageState extends State<StudentHomePage> {
 
   ScoreResult _scoreCode() {
     final code = _codeInput.text;
-    var score = 60;
+    final assignment = _codeAssignments[_selectedCodeAssignment];
+    var score = 45;
     final tips = <String>[];
 
+    for (final keyword in assignment.expectedKeywords) {
+      if (code.contains(keyword)) {
+        score += 8;
+        tips.add('$keyword を使えています。');
+      }
+    }
+
     if (code.contains('class ')) {
-      score += 8;
       tips.add('クラス定義があります。');
     } else {
       tips.add('明確な class でコードをまとめると読みやすくなります。');
     }
     if (code.contains('for') || code.contains('while')) {
-      score += 8;
       tips.add('ループ構造があり、配列問題に対応できます。');
     }
     if (code.contains('Map') || code.contains('HashMap')) {
-      score += 12;
       tips.add('Map を使うと検索の平均計算量を O(1) にできます。');
     }
     if (code.contains('return')) {
-      score += 6;
       tips.add('戻り値が明確です。');
     }
     if (!code.contains(';')) {
@@ -280,16 +350,11 @@ class _StudentHomePageState extends State<StudentHomePage> {
 
     return ScoreResult(
       score: score.clamp(0, 94).toInt(),
-      examTitle: 'Java基礎・配列とHashMap実技テスト',
+      examTitle: assignment.title,
       examDate: _todayLabel(),
-      correctItems: const [
-        'HashMap を使い、二重ループを避けられています。',
-        'target - nums[i] で必要な値を計算できています。',
-        '見つかった場合に添字の配列を返せています。',
-        '見つからない場合の戻り値も用意されています。',
-      ],
+      correctItems: assignment.requirements,
       deductions: baseDeductions,
-      standardAnswer: _standardTwoSumAnswer,
+      standardAnswer: assignment.standardAnswer,
       tips: tips,
     );
   }
@@ -303,6 +368,15 @@ class _StudentHomePageState extends State<StudentHomePage> {
     final submitted = _submittedCount(_selectedExamLesson, questions.length);
     if (submitted == 0) return null;
     return '回答 $submitted/${questions.length} · ${_examScore(_selectedExamLesson, questions)}点';
+  }
+
+  String _examLessonProgressLabel(int lessonIndex) {
+    final questions = _examQuestionsForLesson(_lessons[lessonIndex]);
+    final submitted = _submittedCount(lessonIndex, questions.length);
+    final score = _examScore(lessonIndex, questions);
+    if (submitted == 0) return '未開始 · ${questions.length}問';
+    if (submitted == questions.length) return '完了 · $score点';
+    return '進行中 $submitted/${questions.length} · $score点';
   }
 
   int _submittedCount(int lessonIndex, int total) {
@@ -361,4 +435,15 @@ String _todayLabel() {
   final month = now.month.toString().padLeft(2, '0');
   final day = now.day.toString().padLeft(2, '0');
   return '${now.year}/$month/$day';
+}
+
+String _learningModeLabel(LearningMode mode) {
+  switch (mode) {
+    case LearningMode.video:
+      return 'AI教室：動画学習';
+    case LearningMode.document:
+      return 'AI教室：文書学習';
+    case LearningMode.questionBank:
+      return 'AI教室：問題バンク';
+  }
 }

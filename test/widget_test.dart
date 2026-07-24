@@ -63,7 +63,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('学生ログイン'), findsNothing);
-    expect(find.text('AI教室：Java学習ロードマップ'), findsOneWidget);
+    expect(find.text('AI教室：動画学習'), findsOneWidget);
 
     await tester.tap(find.text('ログアウト'));
     await tester.pumpAndSettle();

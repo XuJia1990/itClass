@@ -11,6 +11,10 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   TeacherSection _section = TeacherSection.pendingAi;
   int _selectedRequest = 0;
   int _selectedStudent = 0;
+  UploadMaterialType _uploadType = UploadMaterialType.video;
+  ProfileSettingSection _settingSection = ProfileSettingSection.profile;
+  SystemManagementSection _systemSection =
+      SystemManagementSection.createStudent;
   final _replyInput = TextEditingController();
 
   final List<TeacherRequest> _requests = List.of(_teacherRequests);
@@ -36,13 +40,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
       onLogout: _logout,
       middle: _teacherMiddlePanel(),
       content: _teacherContent(),
-      topActions: [
-        _SubjectSelector(
-          value: '汎用プログラミング',
-          values: const ['汎用プログラミング', 'Java', 'Web API'],
-          onChanged: (_) {},
-        ),
-      ],
+      topActions: const [],
     );
   }
 
@@ -79,9 +77,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           ],
         );
       case TeacherSection.codeScoring:
-      case TeacherSection.relearning:
-      case TeacherSection.system:
-      case TeacherSection.settings:
         return _HistoryPanel(
           title: '管理メニュー',
           children: [
@@ -96,6 +91,73 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
               subtitle: '12件',
               detail: '教材、解説、サンプルコードを AI 学習用に登録',
               onTap: () {},
+            ),
+          ],
+        );
+      case TeacherSection.system:
+        return _HistoryPanel(
+          title: '学生管理',
+          children: [
+            _CompactListCard(
+              selected: _systemSection == SystemManagementSection.createStudent,
+              title: '新規学生作成',
+              subtitle: 'アカウントとパスワード',
+              detail: 'ここで学生名、メール、初期パスワード、連絡先を入力します。',
+              onTap: () => setState(
+                () => _systemSection = SystemManagementSection.createStudent,
+              ),
+            ),
+            _CompactListCard(
+              selected: _systemSection == SystemManagementSection.addExisting,
+              title: '既存学生を追加',
+              subtitle: '学生一覧から追加',
+              detail: '既存学生を選択して現在のクラスに追加します。',
+              onTap: () => setState(
+                () => _systemSection = SystemManagementSection.addExisting,
+              ),
+            ),
+            _CompactListCard(
+              selected: _systemSection == SystemManagementSection.allStudents,
+              title: '全学生',
+              subtitle: 'アカウント一覧',
+              detail: '全学生のメール、連絡先、初期パスワードを確認します。',
+              onTap: () => setState(
+                () => _systemSection = SystemManagementSection.allStudents,
+              ),
+            ),
+          ],
+        );
+      case TeacherSection.settings:
+        return _settingsMiddlePanel(
+          selected: _settingSection,
+          onSelect: (section) => setState(() => _settingSection = section),
+        );
+      case TeacherSection.relearning:
+        return _HistoryPanel(
+          title: 'アップロード機能',
+          children: [
+            _CompactListCard(
+              selected: _uploadType == UploadMaterialType.video,
+              title: '動画アップロード',
+              subtitle: '授業録画',
+              detail: '先生が録画した授業動画だけをアップロードします。',
+              onTap: () =>
+                  setState(() => _uploadType = UploadMaterialType.video),
+            ),
+            _CompactListCard(
+              selected: _uploadType == UploadMaterialType.pdf,
+              title: 'PDFアップロード',
+              subtitle: '文書教材',
+              detail: 'PDF教材だけをアップロードし、文書学習に反映します。',
+              onTap: () => setState(() => _uploadType = UploadMaterialType.pdf),
+            ),
+            _CompactListCard(
+              selected: _uploadType == UploadMaterialType.test,
+              title: 'テストアップロード',
+              subtitle: '選択問題',
+              detail: 'AI生成・先生確認・編集後にテストをアップロードします。',
+              onTap: () =>
+                  setState(() => _uploadType = UploadMaterialType.test),
             ),
           ],
         );
@@ -115,18 +177,19 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
       case TeacherSection.studentMessages:
         return _TeacherChatWorkspace(student: _students[_selectedStudent]);
       case TeacherSection.relearning:
-        return const _LearningUploadWorkspace();
+        return _LearningUploadWorkspace(type: _uploadType);
       case TeacherSection.system:
-        return const _UserRoleManagementWorkspace();
+        return _UserRoleManagementWorkspace(section: _systemSection);
       case TeacherSection.settings:
-        return const _SettingsWorkspace(
-          role: '先生画面設定',
-          rows: [
-            ('通知', '未回答質問を通知'),
-            ('デフォルト科目', '汎用プログラミング'),
-            ('言語', '日本語'),
-            ('テーマ', 'Light'),
-          ],
+        return _ProfileSettingsWorkspace(
+          roleTitle: '先生設定',
+          roleSubtitle: '名前、パスワード、アイコン、連絡先、メール、基本情報を変更できます。',
+          initialName: 'Admin',
+          initialEmail: 'teacher@example.com',
+          initialPhone: '080-9999-0000',
+          initialAvatar: 'teacher-avatar.png',
+          initialBasicInfo: 'Java と Web API の授業を担当。学生の質問対応とテスト作成を管理します。',
+          section: _settingSection,
         );
     }
   }

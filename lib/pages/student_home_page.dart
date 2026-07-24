@@ -15,6 +15,9 @@ class _StudentHomePageState extends State<StudentHomePage> {
   int _selectedExamLesson = 0;
   int _selectedCodeAssignment = 0;
   String _selectedChatStudent = '佐藤';
+  final List<double> _videoProgress = [
+    for (final video in _learningVideos) video.progress,
+  ];
   final Map<String, int> _examAnswers = {};
   final Set<String> _submittedExamQuestions = {};
 
@@ -133,7 +136,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
                   selected: _selectedLesson == i,
                   title: _learningVideos[i].title,
                   subtitle:
-                      '${_learningVideos[i].category} · ${(_learningVideos[i].progress * 100).round()}%',
+                      '${_learningVideos[i].category} · ${(_videoProgress[i] * 100).round()}%',
                   detail: _learningVideos[i].description,
                   onTap: () => setState(() => _selectedLesson = i),
                 )
@@ -154,7 +157,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
         );
       case StudentSection.exam:
         return _HistoryPanel(
-          title: 'テスト範囲',
+          title: '受験すべきテスト',
           actionLabel: _examProgressLabel,
           children: [
             for (var i = 0; i < _lessons.length; i++)
@@ -229,6 +232,10 @@ class _StudentHomePageState extends State<StudentHomePage> {
         return _LearningWorkspace(
           lesson: _lessons[_selectedLesson],
           videos: _learningVideos,
+          videoProgress: _videoProgress,
+          onVideoProgressChanged: (index, progress) {
+            setState(() => _videoProgress[index] = progress);
+          },
           mode: _learningMode,
         );
       case StudentSection.exam:

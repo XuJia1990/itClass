@@ -1023,11 +1023,15 @@ class _LearningWorkspace extends StatefulWidget {
   const _LearningWorkspace({
     required this.lesson,
     required this.videos,
+    required this.videoProgress,
+    required this.onVideoProgressChanged,
     required this.mode,
   });
 
   final Lesson lesson;
   final List<LearningVideo> videos;
+  final List<double> videoProgress;
+  final void Function(int index, double progress) onVideoProgressChanged;
   final LearningMode mode;
 
   @override
@@ -1048,7 +1052,11 @@ class _LearningWorkspaceState extends State<_LearningWorkspace> {
       padding: const EdgeInsets.all(24),
       children: [
         if (widget.mode == LearningMode.video)
-          _VideoLearningWorkspace(videos: widget.videos)
+          _VideoLearningWorkspace(
+            videos: widget.videos,
+            progress: widget.videoProgress,
+            onProgressChanged: widget.onVideoProgressChanged,
+          )
         else if (widget.mode == LearningMode.questionBank)
           _QuestionBankOutlineWorkspace(lesson: lesson)
         else ...[
@@ -1133,18 +1141,21 @@ class _LearningWorkspaceState extends State<_LearningWorkspace> {
 }
 
 class _VideoLearningWorkspace extends StatelessWidget {
-  const _VideoLearningWorkspace({required this.videos});
+  const _VideoLearningWorkspace({
+    required this.videos,
+    required this.progress,
+    required this.onProgressChanged,
+  });
 
   final List<LearningVideo> videos;
+  final List<double> progress;
+  final void Function(int index, double progress) onProgressChanged;
 
   @override
   Widget build(BuildContext context) {
     final average = videos.isEmpty
         ? 0.0
-        : videos
-                  .map((video) => video.progress)
-                  .reduce((value, element) => value + element) /
-              videos.length;
+        : progress.reduce((value, element) => value + element) / videos.length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1185,16 +1196,27 @@ class _VideoLearningWorkspace extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
-        for (final video in videos) _VideoProgressCard(video: video),
+        for (var i = 0; i < videos.length; i++)
+          _VideoProgressCard(
+            video: videos[i],
+            progress: progress[i],
+            onMarkWatched: () => onProgressChanged(i, 1.0),
+          ),
       ],
     );
   }
 }
 
 class _VideoProgressCard extends StatefulWidget {
-  const _VideoProgressCard({required this.video});
+  const _VideoProgressCard({
+    required this.video,
+    required this.progress,
+    required this.onMarkWatched,
+  });
 
   final LearningVideo video;
+  final double progress;
+  final VoidCallback onMarkWatched;
 
   @override
   State<_VideoProgressCard> createState() => _VideoProgressCardState();
@@ -1215,7 +1237,7 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
   @override
   Widget build(BuildContext context) {
     final video = widget.video;
-    final percent = (video.progress * 100).round();
+    final percent = (widget.progress * 100).round();
 
     return Card(
       child: Padding(
@@ -1263,7 +1285,9 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
             const SizedBox(height: 14),
             Row(
               children: [
-                Expanded(child: LinearProgressIndicator(value: video.progress)),
+                Expanded(
+                  child: LinearProgressIndicator(value: widget.progress),
+                ),
                 const SizedBox(width: 12),
                 Text(
                   '$percent%',
@@ -1286,15 +1310,17 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
                   label: Text(
                     _showPlayer
                         ? 'プレイヤーを閉じる'
-                        : video.progress == 0
+                        : widget.progress == 0
                         ? '視聴開始'
                         : '続きを見る',
                   ),
                 ),
                 OutlinedButton.icon(
-                  onPressed: () {},
+                  onPressed: widget.progress >= 1.0
+                      ? null
+                      : widget.onMarkWatched,
                   icon: const Icon(Icons.check_circle_outline_rounded),
-                  label: const Text('視聴済みにする'),
+                  label: Text(widget.progress >= 1.0 ? '視聴済み' : '視聴済みにする'),
                 ),
               ],
             ),

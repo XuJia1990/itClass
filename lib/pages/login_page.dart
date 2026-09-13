@@ -261,7 +261,7 @@ class _LoginNote extends StatelessWidget {
           SizedBox(width: 10),
           Expanded(
             child: Text(
-              '現在はデモ用ログインです。API 接続後に認証へ切り替えます。',
+              'twcschool の遠端 /app-api に接続してログインします。接続先は web/app-config.js または TWSCHOOL_API_BASE_URL で変更できます。',
               style: TextStyle(color: _AppPalette.muted),
             ),
           ),
@@ -281,7 +281,8 @@ class StudentLoginPage extends StatelessWidget {
       subtitle: '授業動画、文書学習、問題演習、テスト、先生への質問を利用できます。',
       icon: Icons.person_rounded,
       color: _AppPalette.teal,
-      demoId: 'student@example.com',
+      defaultAccountNo: 'TWS2026001',
+      expectedAccountType: schoolAccountTypeStudent,
       destination: const StudentHomePage(),
     );
   }
@@ -297,7 +298,8 @@ class TeacherLoginPage extends StatelessWidget {
       subtitle: '授業動画、PDF、テストアップロード、成績確認、ユーザー管理を利用できます。',
       icon: Icons.admin_panel_settings_rounded,
       color: _AppPalette.sky,
-      demoId: 'teacher@example.com',
+      defaultAccountNo: 'TWD2026001',
+      expectedAccountType: schoolAccountTypeTeacher,
       destination: const TeacherHomePage(),
     );
   }
@@ -309,7 +311,8 @@ class _RoleAuthPage extends StatefulWidget {
     required this.subtitle,
     required this.icon,
     required this.color,
-    required this.demoId,
+    required this.defaultAccountNo,
+    required this.expectedAccountType,
     required this.destination,
   });
 
@@ -317,7 +320,8 @@ class _RoleAuthPage extends StatefulWidget {
   final String subtitle;
   final IconData icon;
   final Color color;
-  final String demoId;
+  final String defaultAccountNo;
+  final int expectedAccountType;
   final Widget destination;
 
   @override
@@ -327,11 +331,12 @@ class _RoleAuthPage extends StatefulWidget {
 class _RoleAuthPageState extends State<_RoleAuthPage> {
   late final TextEditingController _idController;
   final _passwordController = TextEditingController(text: 'password');
+  bool _loggingIn = false;
 
   @override
   void initState() {
     super.initState();
-    _idController = TextEditingController(text: widget.demoId);
+    _idController = TextEditingController(text: widget.defaultAccountNo);
   }
 
   @override
@@ -402,17 +407,19 @@ class _RoleAuthPageState extends State<_RoleAuthPage> {
                     ),
                     const SizedBox(height: 20),
                     FilledButton.icon(
-                      onPressed: () => Navigator.of(context).pushReplacement(
-                        MaterialPageRoute<void>(
-                          builder: (_) => widget.destination,
-                        ),
-                      ),
-                      icon: const Icon(Icons.login_rounded),
-                      label: const Text('ログイン'),
+                      onPressed: _loggingIn ? null : _login,
+                      icon: _loggingIn
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.login_rounded),
+                      label: Text(_loggingIn ? '接続中' : 'ログイン'),
                     ),
                     const SizedBox(height: 12),
                     const Text(
-                      '現在はデモ認証です。API 接続後に実ログインへ切り替えます。',
+                      'twcschool の /app-api/member/auth/account-login を使用します。',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: _AppPalette.muted, fontSize: 12),
                     ),
@@ -424,5 +431,33 @@ class _RoleAuthPageState extends State<_RoleAuthPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _login() async {
+    final account = _idController.text.trim();
+    final password = _passwordController.text;
+    if (account.isEmpty || password.isEmpty) return;
+    setState(() => _loggingIn = true);
+    try {
+      final session = await ItClassApi.instance.accountLogin(
+        account: account,
+        password: password,
+      );
+      if (session.schoolAccountType != widget.expectedAccountType) {
+        await ItClassApi.instance.logout();
+        throw const ApiException('この入口で利用できるアカウント種別ではありません。');
+      }
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(builder: (_) => widget.destination),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('ログインできませんでした：$error')));
+    } finally {
+      if (mounted) setState(() => _loggingIn = false);
+    }
   }
 }

@@ -9,7 +9,7 @@ class MenuItem {
 }
 
 class ChatMessage {
-  const ChatMessage(this.author, this.text);
+  const ChatMessage(this.author, this.text, {this.id, this.conversationId});
 
   factory ChatMessage.student(String text) {
     return ChatMessage(MessageAuthor.student, text);
@@ -25,13 +25,16 @@ class ChatMessage {
 
   final MessageAuthor author;
   final String text;
+  final int? id;
+  final int? conversationId;
 }
 
 enum MessageAuthor { student, ai, teacher }
 
 class Topic {
-  const Topic(this.title, this.category, this.question, this.answer);
+  const Topic(this.title, this.category, this.question, this.answer, {this.id});
 
+  final int? id;
   final String title;
   final String category;
   final String question;
@@ -40,6 +43,8 @@ class Topic {
 
 class Lesson {
   const Lesson({
+    this.id,
+    this.classroomId,
     required this.title,
     required this.level,
     required this.summary,
@@ -50,6 +55,8 @@ class Lesson {
     required this.aiSummary,
   });
 
+  final int? id;
+  final int? classroomId;
   final String title;
   final String level;
   final String summary;
@@ -92,6 +99,8 @@ class LessonExercise {
 
 class LearningVideo {
   const LearningVideo({
+    this.id,
+    this.classroomId,
     required this.title,
     required this.category,
     required this.duration,
@@ -100,6 +109,8 @@ class LearningVideo {
     required this.videoUrl,
   });
 
+  final int? id;
+  final int? classroomId;
   final String title;
   final String category;
   final String duration;
@@ -110,6 +121,11 @@ class LearningVideo {
 
 class ExamQuestion {
   const ExamQuestion({
+    this.paperQuestionId,
+    this.questionId,
+    this.type,
+    this.optionKeys,
+    this.score,
     required this.topic,
     required this.question,
     required this.options,
@@ -117,6 +133,11 @@ class ExamQuestion {
     required this.explanation,
   });
 
+  final int? paperQuestionId;
+  final int? questionId;
+  final int? type;
+  final List<String>? optionKeys;
+  final int? score;
   final String topic;
   final String question;
   final List<String> options;
@@ -160,6 +181,7 @@ class ScoreDeduction {
 
 class CodeAssignment {
   const CodeAssignment({
+    this.id,
     required this.title,
     required this.level,
     required this.status,
@@ -171,6 +193,7 @@ class CodeAssignment {
     required this.expectedKeywords,
   });
 
+  final int? id;
   final String title;
   final String level;
   final String status;
@@ -184,6 +207,9 @@ class CodeAssignment {
 
 class TeacherRequest {
   const TeacherRequest({
+    this.questionId,
+    this.conversationId,
+    this.classroomId,
     required this.student,
     required this.category,
     required this.question,
@@ -192,6 +218,9 @@ class TeacherRequest {
     this.teacherAnswer,
   });
 
+  final int? questionId;
+  final int? conversationId;
+  final int? classroomId;
   final String student;
   final String category;
   final String question;
@@ -201,6 +230,9 @@ class TeacherRequest {
 
   TeacherRequest copyWith({bool? answered, String? teacherAnswer}) {
     return TeacherRequest(
+      questionId: questionId,
+      conversationId: conversationId,
+      classroomId: classroomId,
       student: student,
       category: category,
       question: question,
@@ -216,11 +248,17 @@ class StudentProfile {
     this.name,
     this.status,
     this.lastQuestion, {
+    this.accountId,
+    this.classroomId,
+    this.accountNo,
     required this.email,
     required this.password,
     required this.phone,
   });
 
+  final int? accountId;
+  final int? classroomId;
+  final String? accountNo;
   final String name;
   final String status;
   final String lastQuestion;

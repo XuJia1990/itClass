@@ -16,8 +16,23 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   SystemManagementSection _systemSection =
       SystemManagementSection.createStudent;
   final _replyInput = TextEditingController();
+  List<SchoolClassroom> _classrooms = const [];
+  List<StudentProfile> _studentsFromApi = const [];
+  List<CodeReviewItem> _codeReviewsFromApi = const [];
+  bool _loading = false;
+  String? _apiError;
 
-  final List<TeacherRequest> _requests = List.of(_teacherRequests);
+  final List<TeacherRequest> _requests = [];
+
+  List<StudentProfile> get _teacherStudents => _studentsFromApi;
+
+  List<CodeReviewItem> get _teacherCodeReviews => _codeReviewsFromApi;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadTeacherData());
+  }
 
   @override
   void dispose() {
@@ -30,7 +45,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     return _ResponsiveShell(
       title: _teacherTitle(_section),
       subtitle: '先生画面：質問対応、成績確認、学習資料管理、ユーザー管理',
-      profileName: 'Admin（先生）',
+      profileName: '${ItClassSession.current?.realName ?? ''}（先生）',
       profileRole: '先生',
       activeIndex: TeacherSection.values.indexOf(_section),
       items: _teacherMenu,
@@ -51,6 +66,20 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           title: 'AI会話未回答',
           actionLabel: '${_requests.where((e) => !e.answered).length}件',
           children: [
+            if (_apiError != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Text(
+                  _apiError!,
+                  style: const TextStyle(color: _AppPalette.coral),
+                ),
+              ),
+            if (_requests.isEmpty)
+              const _InlineNotice(
+                tone: _NoticeTone.warning,
+                title: '未回答データがありません',
+                message: 'バックエンドから先生対応が必要な AI 質問が返っていません。',
+              ),
             for (var i = 0; i < _requests.length; i++)
               _CompactListCard(
                 selected: _selectedRequest == i,
@@ -66,12 +95,18 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         return _HistoryPanel(
           title: '学生',
           children: [
-            for (var i = 0; i < _students.length; i++)
+            if (_teacherStudents.isEmpty)
+              const _InlineNotice(
+                tone: _NoticeTone.warning,
+                title: '学生データがありません',
+                message: 'バックエンドに担当学生が登録されていません。',
+              ),
+            for (var i = 0; i < _teacherStudents.length; i++)
               _CompactListCard(
                 selected: _selectedStudent == i,
-                title: _students[i].name,
-                subtitle: _students[i].status,
-                detail: _students[i].lastQuestion,
+                title: _teacherStudents[i].name,
+                subtitle: _teacherStudents[i].status,
+                detail: _teacherStudents[i].lastQuestion,
                 onTap: () => setState(() => _selectedStudent = i),
               ),
           ],
@@ -81,16 +116,16 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           title: '管理メニュー',
           children: [
             _CompactListCard(
-              title: '成績確認待ち',
-              subtitle: '6件',
-              detail: '配列、Map、例外処理の課題',
+              title: '成績確認',
+              subtitle: '${_teacherCodeReviews.length}件',
+              detail: 'バックエンドの提出履歴から採点状況を表示します。',
               onTap: () {},
             ),
             _CompactListCard(
               title: '学習資料アップロード',
-              subtitle: '12件',
-              detail: '教材、解説、サンプルコードを AI 学習用に登録',
-              onTap: () {},
+              subtitle: '${_classrooms.length}クラス',
+              detail: '担当クラスに動画、PDF、テストを登録します。',
+              onTap: () => setState(() => _section = TeacherSection.relearning),
             ),
           ],
         );
@@ -167,28 +202,68 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   Widget _teacherContent() {
     switch (_section) {
       case TeacherSection.pendingAi:
+        if (_loading && _requests.isEmpty) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (_requests.isEmpty) {
+          return const Center(
+            child: _InlineNotice(
+              tone: _NoticeTone.warning,
+              title: '未回答データがありません',
+              message: '学生が AI に質問すると、先生対応が必要な質問がここに表示されます。',
+            ),
+          );
+        }
         return _TeacherRequestWorkspace(
-          request: _requests[_selectedRequest],
+          request: _requests[_selectedRequest.clamp(0, _requests.length - 1)],
           controller: _replyInput,
           onSubmit: _answerRequest,
         );
       case TeacherSection.codeScoring:
-        return _TeacherCodeReviewWorkspace(requests: _codeReviewItems);
+        if (_loading && _codeReviewsFromApi.isEmpty) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        return _TeacherCodeReviewWorkspace(requests: _teacherCodeReviews);
       case TeacherSection.studentMessages:
-        return _TeacherChatWorkspace(student: _students[_selectedStudent]);
+        if (_loading && _teacherStudents.isEmpty) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (_teacherStudents.isEmpty) {
+          return const Center(
+            child: _InlineNotice(
+              tone: _NoticeTone.warning,
+              title: '学生データがありません',
+              message: 'バックエンドに担当学生が登録されていません。',
+            ),
+          );
+        }
+        return _TeacherChatWorkspace(
+          student:
+              _teacherStudents[_selectedStudent.clamp(
+                0,
+                _teacherStudents.length - 1,
+              )],
+        );
       case TeacherSection.relearning:
-        return _LearningUploadWorkspace(type: _uploadType);
+        return _LearningUploadWorkspace(
+          type: _uploadType,
+          classrooms: _classrooms,
+        );
       case TeacherSection.system:
-        return _UserRoleManagementWorkspace(section: _systemSection);
+        return _UserRoleManagementWorkspace(
+          section: _systemSection,
+          classrooms: _classrooms,
+          initialStudents: _teacherStudents,
+        );
       case TeacherSection.settings:
         return _ProfileSettingsWorkspace(
           roleTitle: '先生設定',
           roleSubtitle: '名前、パスワード、アイコン、連絡先、メール、基本情報を変更できます。',
-          initialName: 'Admin',
-          initialEmail: 'teacher@example.com',
-          initialPhone: '080-9999-0000',
-          initialAvatar: 'teacher-avatar.png',
-          initialBasicInfo: 'Java と Web API の授業を担当。学生の質問対応とテスト作成を管理します。',
+          initialName: ItClassSession.current?.realName ?? '',
+          initialEmail: ItClassSession.current?.email ?? '',
+          initialPhone: ItClassSession.current?.mobile ?? '',
+          initialAvatar: '',
+          initialBasicInfo: '',
           section: _settingSection,
         );
     }
@@ -197,21 +272,77 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   void _answerRequest() {
     final text = _replyInput.text.trim();
     if (text.isEmpty) return;
+    final request = _requests[_selectedRequest];
 
     setState(() {
-      _requests[_selectedRequest] = _requests[_selectedRequest].copyWith(
+      _requests[_selectedRequest] = request.copyWith(
         answered: true,
         teacherAnswer: text,
       );
       _replyInput.clear();
     });
 
+    if (request.questionId != null) {
+      unawaited(_replyAiQuestion(request.questionId!, text));
+    }
+
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('学生へ送信し、AI再学習資料として保存しました。')));
   }
 
-  void _logout() {
+  Future<void> _replyAiQuestion(int questionId, String text) async {
+    try {
+      await ItClassApi.instance.replyAiQuestion(
+        questionId: questionId,
+        answer: text,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('API保存に失敗しました：$error')));
+    }
+  }
+
+  Future<void> _loadTeacherData() async {
+    setState(() {
+      _loading = true;
+      _apiError = null;
+    });
+    try {
+      final classrooms = await ItClassApi.instance.myClassrooms();
+      final classroomId = classrooms.isNotEmpty ? classrooms.first.id : null;
+      final questions = await ItClassApi.instance.teacherAiQuestions(
+        classroomId: classroomId,
+      );
+      final students = await ItClassApi.instance.simpleStudents();
+      final contacts = await ItClassApi.instance.chatContacts(
+        classroomId: classroomId,
+      );
+      final codeReviews = await ItClassApi.instance.examAttempts();
+      if (!mounted) return;
+      setState(() {
+        _classrooms = classrooms;
+        _requests
+          ..clear()
+          ..addAll(questions.list);
+        _selectedRequest = 0;
+        _studentsFromApi = contacts.isNotEmpty ? contacts : students;
+        _codeReviewsFromApi = codeReviews.list;
+        _selectedStudent = 0;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _apiError = 'APIデータ取得に失敗しました：$error');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _logout() async {
+    await ItClassApi.instance.logout();
+    if (!mounted) return;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute<void>(builder: (_) => const LoginPage()),
     );

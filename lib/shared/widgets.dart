@@ -710,7 +710,7 @@ class _CodeScoringWorkspace extends StatefulWidget {
 
   final CodeAssignment assignment;
   final TextEditingController controller;
-  final ScoreResult Function() onScore;
+  final Future<ScoreResult> Function() onScore;
 
   @override
   State<_CodeScoringWorkspace> createState() => _CodeScoringWorkspaceState();
@@ -718,6 +718,7 @@ class _CodeScoringWorkspace extends StatefulWidget {
 
 class _CodeScoringWorkspaceState extends State<_CodeScoringWorkspace> {
   ScoreResult? _result;
+  bool _scoring = false;
 
   @override
   Widget build(BuildContext context) {
@@ -746,9 +747,15 @@ class _CodeScoringWorkspaceState extends State<_CodeScoringWorkspace> {
         Align(
           alignment: Alignment.centerLeft,
           child: FilledButton.icon(
-            onPressed: () => setState(() => _result = widget.onScore()),
-            icon: const Icon(Icons.fact_check_rounded),
-            label: const Text('コードを提出して採点'),
+            onPressed: _scoring ? null : _score,
+            icon: _scoring
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.fact_check_rounded),
+            label: Text(_scoring ? '採点中' : 'コードを提出して採点'),
           ),
         ),
         if (_result != null) ...[
@@ -757,6 +764,22 @@ class _CodeScoringWorkspaceState extends State<_CodeScoringWorkspace> {
         ],
       ],
     );
+  }
+
+  Future<void> _score() async {
+    setState(() => _scoring = true);
+    try {
+      final result = await widget.onScore();
+      if (!mounted) return;
+      setState(() => _result = result);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('採点に失敗しました：$error')));
+    } finally {
+      if (mounted) setState(() => _scoring = false);
+    }
   }
 }
 
@@ -1041,8 +1064,6 @@ class _LearningWorkspace extends StatefulWidget {
 class _LearningWorkspaceState extends State<_LearningWorkspace> {
   String _subject = 'Java基礎';
   bool _showSummary = false;
-  int? _selectedAnswer;
-  bool _submitted = false;
 
   @override
   Widget build(BuildContext context) {
@@ -1115,25 +1136,6 @@ class _LearningWorkspaceState extends State<_LearningWorkspace> {
             const SizedBox(height: 12),
             _AiSummaryCard(summary: lesson.aiSummary),
           ],
-          const SizedBox(height: 16),
-          _LessonExerciseCard(
-            exercise: lesson.exercise,
-            selectedAnswer: _selectedAnswer,
-            submitted: _submitted,
-            onSelect: (value) => setState(() {
-              _selectedAnswer = value;
-              _submitted = false;
-            }),
-            onSubmit: _selectedAnswer == null
-                ? null
-                : () => setState(() => _submitted = true),
-          ),
-          const SizedBox(height: 12),
-          _PracticeQuestionSet(
-            title: '追加練習',
-            subtitle: '各単元の題目後に 1〜2 道の確認問題を追加しています。',
-            questions: _practiceQuestionsForLesson(lesson),
-          ),
         ],
       ],
     );
@@ -1324,12 +1326,6 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
                 ),
               ],
             ),
-            const SizedBox(height: 14),
-            _PracticeQuestionSet(
-              title: '動画確認問題',
-              subtitle: '動画を見たあと、1〜2 道の確認問題で理解をチェックします。',
-              questions: _practiceQuestionsForVideo(video),
-            ),
           ],
         ),
       ),
@@ -1469,78 +1465,14 @@ class _QuestionBankOutlineWorkspace extends StatelessWidget {
         _SectionHeader(
           icon: Icons.account_tree_rounded,
           title: '${lesson.title}：問題バンク',
-          subtitle: '小分類を選び、各分類 3 道の練習問題で理解を確認します。',
+          subtitle: 'バックエンド教材から取得した小分類を確認します。',
         ),
         const SizedBox(height: 16),
         for (final section in lesson.sections) ...[
-          _PracticeQuestionSet(
-            title: section.heading,
-            subtitle: section.body,
-            questions: _practiceQuestionsForSection(lesson, section),
-          ),
+          _LessonSectionCard(section: section),
           const SizedBox(height: 14),
         ],
       ],
-    );
-  }
-}
-
-class _PracticeQuestionSet extends StatefulWidget {
-  const _PracticeQuestionSet({
-    required this.title,
-    required this.subtitle,
-    required this.questions,
-  });
-
-  final String title;
-  final String subtitle;
-  final List<ExamQuestion> questions;
-
-  @override
-  State<_PracticeQuestionSet> createState() => _PracticeQuestionSetState();
-}
-
-class _PracticeQuestionSetState extends State<_PracticeQuestionSet> {
-  final Map<int, int> _answers = {};
-  final Set<int> _submitted = {};
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.title,
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              widget.subtitle,
-              style: const TextStyle(color: _AppPalette.muted),
-            ),
-            const SizedBox(height: 16),
-            for (var i = 0; i < widget.questions.length; i++) ...[
-              _ExamQuestionCard(
-                number: i + 1,
-                question: widget.questions[i],
-                selectedAnswer: _answers[i],
-                submitted: _submitted.contains(i),
-                onSelect: (answerIndex) => setState(() {
-                  _answers[i] = answerIndex;
-                  _submitted.remove(i);
-                }),
-                onSubmit: () => setState(() => _submitted.add(i)),
-              ),
-              if (i != widget.questions.length - 1) const SizedBox(height: 12),
-            ],
-          ],
-        ),
-      ),
     );
   }
 }
@@ -1617,131 +1549,6 @@ class _AiSummaryCard extends StatelessWidget {
                 Text(summary, style: const TextStyle(height: 1.6)),
               ],
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LessonExerciseCard extends StatelessWidget {
-  const _LessonExerciseCard({
-    required this.exercise,
-    required this.selectedAnswer,
-    required this.submitted,
-    required this.onSelect,
-    required this.onSubmit,
-  });
-
-  final LessonExercise exercise;
-  final int? selectedAnswer;
-  final bool submitted;
-  final ValueChanged<int> onSelect;
-  final VoidCallback? onSubmit;
-
-  @override
-  Widget build(BuildContext context) {
-    final isCorrect = selectedAnswer == exercise.answerIndex;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _SectionHeader(
-              icon: Icons.edit_note_rounded,
-              title: '理解度チェック',
-              subtitle: '選択後に、正しい点と間違いの理由を確認できます。',
-            ),
-            const SizedBox(height: 16),
-            Text(
-              exercise.question,
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 12),
-            for (var i = 0; i < exercise.options.length; i++)
-              _AnswerOptionTile(
-                label: exercise.options[i],
-                selected: selectedAnswer == i,
-                onTap: () => onSelect(i),
-              ),
-            const SizedBox(height: 10),
-            FilledButton.icon(
-              onPressed: onSubmit,
-              icon: const Icon(Icons.check_rounded),
-              label: const Text('練習を採点'),
-            ),
-            if (submitted) ...[
-              const SizedBox(height: 14),
-              _ExerciseAnalysisCard(
-                isCorrect: isCorrect,
-                correctReason: exercise.correctReason,
-                wrongReason: exercise.wrongReason,
-                standardAnswer: exercise.standardAnswer,
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ExerciseAnalysisCard extends StatelessWidget {
-  const _ExerciseAnalysisCard({
-    required this.isCorrect,
-    required this.correctReason,
-    required this.wrongReason,
-    required this.standardAnswer,
-  });
-
-  final bool isCorrect;
-  final String correctReason;
-  final String wrongReason;
-  final String standardAnswer;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: isCorrect ? _AppPalette.wash : const Color(0xFFFFF7ED),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: isCorrect ? _AppPalette.teal : const Color(0xFFFED7AA),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                isCorrect
-                    ? Icons.check_circle_rounded
-                    : Icons.error_outline_rounded,
-                color: isCorrect ? _AppPalette.teal : const Color(0xFFC2410C),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                isCorrect ? '正解です' : 'もう少しです',
-                style: const TextStyle(fontWeight: FontWeight.w900),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text('正しいポイント：$correctReason'),
-          if (!isCorrect) ...[
-            const SizedBox(height: 6),
-            Text('間違いの理由：$wrongReason'),
-          ],
-          const SizedBox(height: 10),
-          Text(
-            '標準答案：$standardAnswer',
-            style: const TextStyle(fontWeight: FontWeight.w800),
           ),
         ],
       ),
@@ -2222,10 +2029,33 @@ class _TeacherCodeReviewWorkspace extends StatelessWidget {
   }
 }
 
-class _TeacherChatWorkspace extends StatelessWidget {
+class _TeacherChatWorkspace extends StatefulWidget {
   const _TeacherChatWorkspace({required this.student});
 
   final StudentProfile student;
+
+  @override
+  State<_TeacherChatWorkspace> createState() => _TeacherChatWorkspaceState();
+}
+
+class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
+  final _controller = TextEditingController();
+  final List<ChatMessage> _messages = [];
+  int? _conversationId;
+
+  @override
+  void initState() {
+    super.initState();
+    _messages
+      ..add(ChatMessage.student(widget.student.lastQuestion))
+      ..add(ChatMessage.teacher('まずエラー内容を確認し、実行できる修正版を提案します。'));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2234,16 +2064,14 @@ class _TeacherChatWorkspace extends StatelessWidget {
       children: [
         _SectionHeader(
           icon: Icons.chat_bubble_rounded,
-          title: '${student.name} とチャット',
-          subtitle: student.status,
+          title: '${widget.student.name} とチャット',
+          subtitle: widget.student.status,
         ),
         const SizedBox(height: 16),
-        _MessageBubble(message: ChatMessage.student(student.lastQuestion)),
-        _MessageBubble(
-          message: ChatMessage.teacher('まずエラー内容を確認し、実行できる修正版を提案します。'),
-        ),
+        for (final message in _messages) _MessageBubble(message: message),
         const SizedBox(height: 16),
         TextField(
+          controller: _controller,
           minLines: 3,
           maxLines: 5,
           decoration: InputDecoration(
@@ -2252,15 +2080,59 @@ class _TeacherChatWorkspace extends StatelessWidget {
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
           ),
         ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton.icon(
+            onPressed: _send,
+            icon: const Icon(Icons.send_rounded),
+            label: const Text('返信を送信'),
+          ),
+        ),
       ],
     );
+  }
+
+  Future<void> _send() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+    setState(() {
+      _messages.add(ChatMessage.teacher(text));
+      _controller.clear();
+    });
+    try {
+      final student = widget.student;
+      if (student.accountId == null || student.classroomId == null) {
+        throw const ApiException('学生IDまたはクラスIDがありません。');
+      }
+      final conversationId =
+          _conversationId ??
+          await ItClassApi.instance.getOrCreateChat(
+            classroomId: student.classroomId!,
+            peerAccountId: student.accountId!,
+          );
+      _conversationId = conversationId;
+      await ItClassApi.instance.sendChatMessage(
+        conversationId: conversationId,
+        content: text,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('返信送信に失敗しました：$error')));
+    }
   }
 }
 
 class _LearningUploadWorkspace extends StatefulWidget {
-  const _LearningUploadWorkspace({required this.type});
+  const _LearningUploadWorkspace({
+    required this.type,
+    required this.classrooms,
+  });
 
   final UploadMaterialType type;
+  final List<SchoolClassroom> classrooms;
 
   @override
   State<_LearningUploadWorkspace> createState() =>
@@ -2273,6 +2145,30 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
   int _selectedTestLesson = 0;
   int _questionCount = 3;
   List<ExamQuestion> _draftQuestions = const [];
+  List<Lesson> _availableLessons = const [];
+  bool _loadingLessons = false;
+  bool _generatingQuestions = false;
+  String? _lessonError;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadAvailableLessons());
+  }
+
+  @override
+  void didUpdateWidget(covariant _LearningUploadWorkspace oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldClassroomId = oldWidget.classrooms.isEmpty
+        ? null
+        : oldWidget.classrooms.first.id;
+    final classroomId = widget.classrooms.isEmpty
+        ? null
+        : widget.classrooms.first.id;
+    if (oldClassroomId != classroomId) {
+      unawaited(_loadAvailableLessons());
+    }
+  }
 
   @override
   void dispose() {
@@ -2293,47 +2189,61 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
         ),
         const SizedBox(height: 16),
         if (widget.type == UploadMaterialType.video) ...[
-          const _UploadDropZone(
+          _UploadDropZone(
             icon: Icons.video_file_rounded,
             title: '授業動画をアップロード',
             subtitle: '先生が録画した授業を MP4 / MOV として登録し、学生の動画一覧と進捗管理に反映します。',
             buttonLabel: '動画ファイルを選択',
-            allowedExtensions: ['mp4', 'mov'],
+            allowedExtensions: const ['mp4', 'mov'],
             fileType: FileType.custom,
+            onUpload: _uploadCourseMaterial,
           ),
           const SizedBox(height: 16),
-          const _UploadedMaterialCard(
-            icon: Icons.video_library_rounded,
-            title: 'HashMap 授業録画',
-            status: '動画登録済み',
-            detail: '学生画面の動画学習に公開 · 18% 視聴',
+          const _InlineNotice(
+            tone: _NoticeTone.success,
+            title: 'アップロード先',
+            message: 'アップロード完了後、バックエンドの動画教材一覧から学生画面へ反映されます。',
           ),
         ] else if (widget.type == UploadMaterialType.pdf) ...[
-          const _UploadDropZone(
+          _UploadDropZone(
             icon: Icons.picture_as_pdf_rounded,
             title: 'PDF教材をアップロード',
             subtitle: 'PDF教材を AI教室の文書学習に登録し、問題バンク生成やAI再学習の素材にします。',
             buttonLabel: 'PDFファイルを選択',
-            allowedExtensions: ['pdf'],
+            allowedExtensions: const ['pdf'],
             fileType: FileType.custom,
+            onUpload: _uploadCourseMaterial,
           ),
           const SizedBox(height: 16),
-          const _UploadedMaterialCard(
-            icon: Icons.picture_as_pdf_rounded,
-            title: 'コレクション：配列とArrayList',
-            status: 'PDF登録済み',
-            detail: 'AI教室の文書学習に反映予定',
+          const _InlineNotice(
+            tone: _NoticeTone.success,
+            title: 'アップロード先',
+            message: 'アップロード完了後、バックエンドの文書教材一覧から学生画面へ反映されます。',
           ),
         ] else ...[
+          if (_lessonError != null) ...[
+            _InlineNotice(
+              tone: _NoticeTone.warning,
+              title: '教材取得エラー',
+              message: _lessonError!,
+            ),
+            const SizedBox(height: 16),
+          ],
+          if (_loadingLessons) ...[
+            const Center(child: CircularProgressIndicator()),
+            const SizedBox(height: 16),
+          ],
           _TeacherTestUploadPanel(
             titleController: _testTitleController,
             categoryController: _testCategoryController,
+            lessons: _availableLessons,
             selectedLessonIndex: _selectedTestLesson,
             questionCount: _questionCount,
             questions: _draftQuestions,
+            generating: _generatingQuestions,
             onLessonChanged: (index) => setState(() {
               _selectedTestLesson = index;
-              _testCategoryController.text = _lessons[index].level;
+              _testCategoryController.text = _availableLessons[index].level;
             }),
             onQuestionCountChanged: (count) =>
                 setState(() => _questionCount = count),
@@ -2344,23 +2254,77 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
             onUpload: _uploadDraftTest,
           ),
           const SizedBox(height: 16),
-          const _UploadedMaterialCard(
-            icon: Icons.quiz_rounded,
-            title: 'Java基礎確認テスト',
-            status: '確認待ち',
-            detail: 'AI生成後、先生確認・編集してから公開',
+          const _InlineNotice(
+            tone: _NoticeTone.success,
+            title: '公開先',
+            message: 'アップロードしたテストはバックエンドで公開され、学生のテスト一覧へ反映されます。',
           ),
         ],
       ],
     );
   }
 
-  void _generateDraftQuestions() {
+  Future<void> _loadAvailableLessons() async {
+    if (widget.classrooms.isEmpty) {
+      setState(() {
+        _availableLessons = const [];
+        _lessonError = null;
+      });
+      return;
+    }
     setState(() {
-      _draftQuestions = _examQuestionsForLesson(
-        _lessons[_selectedTestLesson],
-      ).take(_questionCount).toList();
+      _loadingLessons = true;
+      _lessonError = null;
     });
+    try {
+      final docs = await ItClassApi.instance.courseDocuments(
+        classroomId: widget.classrooms.first.id,
+      );
+      if (!mounted) return;
+      setState(() {
+        _availableLessons = docs.list;
+        _selectedTestLesson = 0;
+        if (_availableLessons.isNotEmpty) {
+          _testCategoryController.text = _availableLessons.first.level;
+        }
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _lessonError = 'バックエンド教材の取得に失敗しました：$error');
+    } finally {
+      if (mounted) setState(() => _loadingLessons = false);
+    }
+  }
+
+  Future<void> _generateDraftQuestions() async {
+    if (_availableLessons.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('先にバックエンドへ教材を登録してください。')));
+      return;
+    }
+    setState(() => _generatingQuestions = true);
+    try {
+      final lesson =
+          _availableLessons[_selectedTestLesson.clamp(
+            0,
+            _availableLessons.length - 1,
+          )];
+      final questions = await ItClassApi.instance.generateExamQuestions(
+        programmingLanguage: lesson.level,
+        topic: lesson.title,
+        count: _questionCount,
+      );
+      if (!mounted) return;
+      setState(() => _draftQuestions = questions);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('AI問題生成に失敗しました：$error')));
+    } finally {
+      if (mounted) setState(() => _generatingQuestions = false);
+    }
   }
 
   void _addDraftQuestion() {
@@ -2378,10 +2342,73 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
     });
   }
 
-  void _uploadDraftTest() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('テストをアップロードしました。学生のテスト一覧に反映されます。')),
+  Future<void> _uploadCourseMaterial(PlatformFile file) async {
+    if (widget.classrooms.isEmpty) {
+      throw const ApiException('担当クラスがありません。先に后台でクラスを作成してください。');
+    }
+    final classroomId = widget.classrooms.first.id;
+    final url = await ItClassApi.instance.uploadFile(
+      file,
+      directory: widget.type == UploadMaterialType.video
+          ? 'course-video'
+          : 'course-document',
     );
+    if (widget.type == UploadMaterialType.video) {
+      await ItClassApi.instance.createCourseVideo(
+        classroomId: classroomId,
+        title: file.name,
+        fileUrl: url,
+        file: file,
+      );
+    } else {
+      await ItClassApi.instance.createCourseDocument(
+        classroomId: classroomId,
+        title: file.name,
+        fileUrl: url,
+        file: file,
+      );
+    }
+  }
+
+  Future<void> _uploadDraftTest() async {
+    if (_draftQuestions.isEmpty) {
+      await _generateDraftQuestions();
+    }
+    if (!mounted) return;
+    if (_draftQuestions.isEmpty) return;
+    if (widget.classrooms.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('担当クラスがありません。')));
+      return;
+    }
+    try {
+      final questionIds = <int>[];
+      for (final question in _draftQuestions) {
+        questionIds.add(await ItClassApi.instance.createQuestion(question));
+      }
+      final title = _testTitleController.text.trim();
+      final paperId = await ItClassApi.instance.createPaper(
+        title: title,
+        description: _testCategoryController.text.trim(),
+        questionIds: questionIds,
+      );
+      await ItClassApi.instance.createAndPublishExam(
+        classroomId: widget.classrooms.first.id,
+        paperId: paperId,
+        title: title,
+        description: _testCategoryController.text.trim(),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('テストをアップロードしました。学生のテスト一覧に反映されます。')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('テストアップロードに失敗しました：$error')));
+    }
   }
 
   void _updateDraftQuestion(int index, ExamQuestion question) {
@@ -2441,6 +2468,7 @@ class _UploadDropZone extends StatefulWidget {
     required this.buttonLabel,
     required this.allowedExtensions,
     required this.fileType,
+    required this.onUpload,
   });
 
   final IconData icon;
@@ -2449,6 +2477,7 @@ class _UploadDropZone extends StatefulWidget {
   final String buttonLabel;
   final List<String> allowedExtensions;
   final FileType fileType;
+  final Future<void> Function(PlatformFile file) onUpload;
 
   @override
   State<_UploadDropZone> createState() => _UploadDropZoneState();
@@ -2456,6 +2485,7 @@ class _UploadDropZone extends StatefulWidget {
 
 class _UploadDropZoneState extends State<_UploadDropZone> {
   PlatformFile? _selectedFile;
+  bool _uploading = false;
 
   @override
   Widget build(BuildContext context) {
@@ -2500,7 +2530,8 @@ class _UploadDropZoneState extends State<_UploadDropZone> {
                     const SizedBox(height: 14),
                     _SelectedFilePanel(
                       file: _selectedFile!,
-                      onUpload: _uploadSelectedFile,
+                      uploading: _uploading,
+                      onUpload: () => unawaited(_uploadSelectedFile()),
                     ),
                   ],
                 ],
@@ -2522,7 +2553,7 @@ class _UploadDropZoneState extends State<_UploadDropZone> {
           ? widget.allowedExtensions
           : null,
       allowMultiple: false,
-      withData: false,
+      withData: true,
     );
 
     if (!mounted || result == null || result.files.isEmpty) return;
@@ -2531,20 +2562,37 @@ class _UploadDropZoneState extends State<_UploadDropZone> {
     });
   }
 
-  void _uploadSelectedFile() {
+  Future<void> _uploadSelectedFile() async {
     final file = _selectedFile;
     if (file == null) return;
-
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('${file.name} をアップロードしました。')));
+    setState(() => _uploading = true);
+    try {
+      await widget.onUpload(file);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${file.name} をアップロードしました。')));
+      setState(() => _selectedFile = null);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('アップロードに失敗しました：$error')));
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
   }
 }
 
 class _SelectedFilePanel extends StatelessWidget {
-  const _SelectedFilePanel({required this.file, required this.onUpload});
+  const _SelectedFilePanel({
+    required this.file,
+    required this.uploading,
+    required this.onUpload,
+  });
 
   final PlatformFile file;
+  final bool uploading;
   final VoidCallback onUpload;
 
   @override
@@ -2579,9 +2627,15 @@ class _SelectedFilePanel extends StatelessWidget {
             ),
           ),
           FilledButton.icon(
-            onPressed: onUpload,
-            icon: const Icon(Icons.cloud_upload_rounded),
-            label: const Text('アップロード'),
+            onPressed: uploading ? null : onUpload,
+            icon: uploading
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.cloud_upload_rounded),
+            label: Text(uploading ? 'アップロード中' : 'アップロード'),
           ),
         ],
       ),
@@ -2593,9 +2647,11 @@ class _TeacherTestUploadPanel extends StatelessWidget {
   const _TeacherTestUploadPanel({
     required this.titleController,
     required this.categoryController,
+    required this.lessons,
     required this.selectedLessonIndex,
     required this.questionCount,
     required this.questions,
+    required this.generating,
     required this.onLessonChanged,
     required this.onQuestionCountChanged,
     required this.onGenerate,
@@ -2607,12 +2663,14 @@ class _TeacherTestUploadPanel extends StatelessWidget {
 
   final TextEditingController titleController;
   final TextEditingController categoryController;
+  final List<Lesson> lessons;
   final int selectedLessonIndex;
   final int questionCount;
   final List<ExamQuestion> questions;
+  final bool generating;
   final ValueChanged<int> onLessonChanged;
   final ValueChanged<int> onQuestionCountChanged;
-  final VoidCallback onGenerate;
+  final Future<void> Function() onGenerate;
   final VoidCallback onAddQuestion;
   final void Function(int index, ExamQuestion question) onQuestionChanged;
   final ValueChanged<int> onDeleteQuestion;
@@ -2644,21 +2702,28 @@ class _TeacherTestUploadPanel extends StatelessWidget {
                           decoration: const InputDecoration(labelText: 'テスト名'),
                         ),
                         DropdownButtonFormField<int>(
-                          initialValue: selectedLessonIndex,
+                          initialValue: lessons.isEmpty
+                              ? null
+                              : selectedLessonIndex.clamp(
+                                  0,
+                                  lessons.length - 1,
+                                ),
                           decoration: const InputDecoration(
                             labelText: '出題内容',
                             prefixIcon: Icon(Icons.menu_book_rounded),
                           ),
                           items: [
-                            for (var i = 0; i < _lessons.length; i++)
+                            for (var i = 0; i < lessons.length; i++)
                               DropdownMenuItem<int>(
                                 value: i,
-                                child: Text(_lessons[i].title),
+                                child: Text(lessons[i].title),
                               ),
                           ],
-                          onChanged: (value) {
-                            if (value != null) onLessonChanged(value);
-                          },
+                          onChanged: lessons.isEmpty
+                              ? null
+                              : (value) {
+                                  if (value != null) onLessonChanged(value);
+                                },
                         ),
                       ],
                     ),
@@ -2681,7 +2746,6 @@ class _TeacherTestUploadPanel extends StatelessWidget {
                           items: const [
                             DropdownMenuItem(value: 3, child: Text('3問')),
                             DropdownMenuItem(value: 5, child: Text('5問')),
-                            DropdownMenuItem(value: 10, child: Text('10問')),
                           ],
                           onChanged: (value) {
                             if (value != null) onQuestionCountChanged(value);
@@ -2694,21 +2758,36 @@ class _TeacherTestUploadPanel extends StatelessWidget {
               },
             ),
             const SizedBox(height: 14),
-            _InlineNotice(
-              tone: _NoticeTone.success,
-              title: 'テスト内容',
-              message:
-                  '${_lessons[selectedLessonIndex].title} について、選択問題を $questionCount 問生成します。先生は生成後に確認、編集、削除、追加できます。',
-            ),
+            if (lessons.isEmpty)
+              const _InlineNotice(
+                tone: _NoticeTone.warning,
+                title: '教材データがありません',
+                message: 'テスト生成には、先にバックエンドへPDF教材を登録してください。',
+              )
+            else
+              _InlineNotice(
+                tone: _NoticeTone.success,
+                title: 'テスト内容',
+                message:
+                    '${lessons[selectedLessonIndex.clamp(0, lessons.length - 1)].title} について、選択問題を $questionCount 問生成します。先生は生成後に確認、編集、削除、追加できます。',
+              ),
             const SizedBox(height: 14),
             Wrap(
               spacing: 10,
               runSpacing: 10,
               children: [
                 FilledButton.icon(
-                  onPressed: onGenerate,
-                  icon: const Icon(Icons.auto_awesome_rounded),
-                  label: const Text('AIで選択問題を生成'),
+                  onPressed: lessons.isEmpty || generating
+                      ? null
+                      : () => unawaited(onGenerate()),
+                  icon: generating
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.auto_awesome_rounded),
+                  label: Text(generating ? '生成中' : 'AIで選択問題を生成'),
                 ),
                 OutlinedButton.icon(
                   onPressed: onAddQuestion,
@@ -2854,6 +2933,11 @@ class _EditableQuestionDraft extends StatelessWidget {
   }) {
     onChanged(
       ExamQuestion(
+        paperQuestionId: this.question.paperQuestionId,
+        questionId: this.question.questionId,
+        type: this.question.type,
+        optionKeys: this.question.optionKeys,
+        score: this.question.score,
         topic: topic ?? this.question.topic,
         question: question ?? this.question.question,
         options: options ?? this.question.options,
@@ -2864,36 +2948,16 @@ class _EditableQuestionDraft extends StatelessWidget {
   }
 }
 
-class _UploadedMaterialCard extends StatelessWidget {
-  const _UploadedMaterialCard({
-    this.icon = Icons.description_rounded,
-    required this.title,
-    required this.status,
-    required this.detail,
+class _UserRoleManagementWorkspace extends StatefulWidget {
+  const _UserRoleManagementWorkspace({
+    required this.section,
+    required this.classrooms,
+    required this.initialStudents,
   });
 
-  final IconData icon;
-  final String title;
-  final String status;
-  final String detail;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        leading: Icon(icon, color: _AppPalette.teal),
-        title: Text(title),
-        subtitle: Text(detail),
-        trailing: Text(status),
-      ),
-    );
-  }
-}
-
-class _UserRoleManagementWorkspace extends StatefulWidget {
-  const _UserRoleManagementWorkspace({required this.section});
-
   final SystemManagementSection section;
+  final List<SchoolClassroom> classrooms;
+  final List<StudentProfile> initialStudents;
 
   @override
   State<_UserRoleManagementWorkspace> createState() =>
@@ -2902,14 +2966,21 @@ class _UserRoleManagementWorkspace extends StatefulWidget {
 
 class _UserRoleManagementWorkspaceState
     extends State<_UserRoleManagementWorkspace> {
-  final _nameController = TextEditingController(text: '新規学生');
-  final _emailController = TextEditingController(
-    text: 'new-student@example.com',
-  );
-  final _passwordController = TextEditingController(text: 'student123');
-  final _phoneController = TextEditingController(text: '080-0000-0000');
-  final List<StudentProfile> _managedStudents = List.of(_students);
-  String _existingStudent = _students.first.name;
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _phoneController = TextEditingController();
+  late List<StudentProfile> _managedStudents;
+  late String _existingStudent;
+
+  @override
+  void initState() {
+    super.initState();
+    _managedStudents = List.of(widget.initialStudents);
+    _existingStudent = _managedStudents.isEmpty
+        ? ''
+        : _managedStudents.first.name;
+  }
 
   @override
   void dispose() {
@@ -3041,10 +3112,12 @@ class _UserRoleManagementWorkspaceState
               children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    initialValue: _existingStudent,
+                    initialValue: _existingStudent.isEmpty
+                        ? null
+                        : _existingStudent,
                     decoration: const InputDecoration(labelText: '既存学生'),
                     items: [
-                      for (final student in _students)
+                      for (final student in _managedStudents)
                         DropdownMenuItem(
                           value: student.name,
                           child: Text('${student.name} · ${student.email}'),
@@ -3059,7 +3132,9 @@ class _UserRoleManagementWorkspaceState
                 ),
                 const SizedBox(width: 10),
                 OutlinedButton.icon(
-                  onPressed: _addExistingStudent,
+                  onPressed: _managedStudents.isEmpty
+                      ? null
+                      : _addExistingStudent,
                   icon: const Icon(Icons.group_add_rounded),
                   label: const Text('追加'),
                 ),
@@ -3081,6 +3156,12 @@ class _UserRoleManagementWorkspaceState
           subtitle: '全学生のアカウント、メール、連絡先、初期パスワードを確認します。',
         ),
         const SizedBox(height: 12),
+        if (_managedStudents.isEmpty)
+          const _InlineNotice(
+            tone: _NoticeTone.warning,
+            title: '学生データがありません',
+            message: 'バックエンドに学生アカウントが登録されていません。',
+          ),
         for (final student in _managedStudents)
           _UserRoleCard(
             name: student.name,
@@ -3094,29 +3175,63 @@ class _UserRoleManagementWorkspaceState
     );
   }
 
-  void _createStudent() {
+  Future<void> _createStudent() async {
     final name = _nameController.text.trim();
-    if (name.isEmpty) return;
-    setState(() {
-      _managedStudents.add(
-        StudentProfile(
-          name,
-          '生徒 · 新規作成',
-          'まだ質問はありません。',
-          email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
-          phone: _phoneController.text.trim(),
-        ),
-      );
-    });
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    final phone = _phoneController.text.trim();
+    if (name.isEmpty || email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('学生名、账号、初期密码を入力してください。')));
+      return;
+    }
+    try {
+      if (widget.classrooms.isNotEmpty) {
+        final id = await ItClassApi.instance.createStudent(
+          classroomId: widget.classrooms.first.id,
+          realName: name,
+          username: email,
+          password: password,
+          mobile: phone,
+        );
+        if (!mounted) return;
+        setState(() {
+          _managedStudents.add(
+            StudentProfile(
+              name,
+              '生徒 · 新規作成',
+              'まだ質問はありません。',
+              accountId: id,
+              classroomId: widget.classrooms.first.id,
+              email: email,
+              password: password,
+              phone: phone,
+            ),
+          );
+        });
+      } else {
+        throw const ApiException('担当クラスがありません。');
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('学生アカウントを作成しました。')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('学生作成に失敗しました：$error')));
+    }
   }
 
-  void _addExistingStudent() {
-    final existing = _students.firstWhere(
+  Future<void> _addExistingStudent() async {
+    if (_managedStudents.isEmpty) return;
+    final existing = _managedStudents.firstWhere(
       (student) => student.name == _existingStudent,
     );
     final alreadyAdded = _managedStudents.any(
-      (student) => student.email == existing.email,
+      (student) =>
+          student.email == existing.email && student.classroomId != null,
     );
     if (alreadyAdded) {
       ScaffoldMessenger.of(
@@ -3124,7 +3239,25 @@ class _UserRoleManagementWorkspaceState
       ).showSnackBar(SnackBar(content: Text('${existing.name} はすでに一覧にあります。')));
       return;
     }
-    setState(() => _managedStudents.add(existing));
+    try {
+      if (widget.classrooms.isEmpty || existing.accountId == null) {
+        throw const ApiException('担当クラスまたは学生IDがありません。');
+      }
+      await ItClassApi.instance.addExistingStudent(
+        classroomId: widget.classrooms.first.id,
+        studentAccountId: existing.accountId!,
+      );
+      if (!mounted) return;
+      setState(() => _managedStudents.add(existing));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${existing.name} を追加しました。')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('既存学生の追加に失敗しました：$error')));
+    }
   }
 }
 
@@ -3371,7 +3504,7 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
     ).showSnackBar(const SnackBar(content: Text('アイコンを選択しました。保存すると反映されます。')));
   }
 
-  void _saveProfile() {
+  Future<void> _saveProfile() async {
     if (_passwordController.text != _confirmPasswordController.text) {
       ScaffoldMessenger.of(
         context,
@@ -3379,16 +3512,34 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
       return;
     }
 
-    setState(() {
-      _savedName = _nameController.text.trim().isEmpty
-          ? '学生'
-          : _nameController.text.trim();
-      _savedEmail = _emailController.text.trim();
-    });
-
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('学生情報を保存しました。')));
+    try {
+      await ItClassApi.instance.updateProfile(
+        nickname: _nameController.text.trim(),
+        email: _emailController.text.trim(),
+        mobile: _phoneController.text.trim(),
+      );
+      if (widget.section == ProfileSettingSection.password) {
+        await ItClassApi.instance.updatePassword(
+          oldPassword: 'password',
+          newPassword: _passwordController.text,
+        );
+      }
+      if (!mounted) return;
+      setState(() {
+        _savedName = _nameController.text.trim().isEmpty
+            ? '学生'
+            : _nameController.text.trim();
+        _savedEmail = _emailController.text.trim();
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('学生情報を保存しました。')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('保存に失敗しました：$error')));
+    }
   }
 
   void _resetProfile() {

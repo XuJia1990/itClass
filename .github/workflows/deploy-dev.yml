@@ -1,0 +1,72 @@
+name: Build itClass web dev image
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/deploy-dev.yml'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'deploy/**'
+      - 'lib/**'
+      - 'web/**'
+      - 'test/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'analysis_options.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/xujia1990/itclass
+  FLUTTER_VERSION: 3.47.2
+  API_BASE_URL: https://api-dev.tw-onlineschool.com/app-api
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build Flutter web
+        run: >-
+          flutter build web --release
+          --dart-define=TWSCHOOL_API_BASE_URL=${{ env.API_BASE_URL }}
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build image
+        run: |
+          docker build \
+            --tag "${IMAGE_NAME}:dev" \
+            --tag "${IMAGE_NAME}:${GITHUB_SHA}" \
+            .
+
+      - name: Push image
+        run: |
+          docker push "${IMAGE_NAME}:dev"
+          docker push "${IMAGE_NAME}:${GITHUB_SHA}"

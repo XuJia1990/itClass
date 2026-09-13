@@ -1,0 +1,16 @@
+name: twschool-app-dev
+
+services:
+  twschool-app-dev:
+    image: ghcr.io/xujia1990/itclass:dev
+    container_name: twschool-app-dev
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4004:80"
+    networks:
+      - npm
+
+networks:
+  npm:
+    external: true
+    name: ${NPM_NETWORK:-root_default}

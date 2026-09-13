@@ -20,7 +20,7 @@ const _teacherMenu = [
 
 const _students = [
   StudentProfile(
-    '中村',
+    '中田',
     '生徒 · オンライン',
     'GET と POST の主な違いは何ですか？',
     email: 'nakamura@example.com',

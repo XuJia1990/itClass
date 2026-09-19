@@ -108,6 +108,9 @@ class SchoolExamSummary {
     required this.description,
     required this.latestAttemptId,
     required this.latestScore,
+    required this.status,
+    required this.startTime,
+    required this.endTime,
   });
 
   factory SchoolExamSummary.fromJson(Map<String, dynamic> json) {
@@ -117,6 +120,9 @@ class SchoolExamSummary {
       description: _asString(json['description']),
       latestAttemptId: _asInt(json['latestAttemptId']),
       latestScore: _asInt(json['latestScore']),
+      status: _asInt(json['status']) ?? 0,
+      startTime: _asDateTime(json['startTime']),
+      endTime: _asDateTime(json['endTime']),
     );
   }
 
@@ -125,6 +131,16 @@ class SchoolExamSummary {
   final String description;
   final int? latestAttemptId;
   final int? latestScore;
+  final int status;
+  final DateTime? startTime;
+  final DateTime? endTime;
+
+  bool get isAvailable {
+    final now = DateTime.now();
+    return status == 10 &&
+        (startTime == null || !now.isBefore(startTime!)) &&
+        (endTime == null || now.isBefore(endTime!));
+  }
 }
 
 class ExamAttemptPayload {
@@ -185,18 +201,36 @@ class ItClassApi {
     }
   }
 
-  Future<Map<String, dynamic>> getCurrentUser() {
-    return _get<Map<String, dynamic>>('/member/user/get');
+  Future<MemberProfile> getCurrentUser() async {
+    final data = await _get<Map<String, dynamic>>('/school/account/profile');
+    return MemberProfile(
+      realName: _asString(data['realName']),
+      nickname: _asString(data['nickname']),
+      avatar: _asString(data['avatar']),
+      mobile: _asString(data['mobile']),
+      email: _asString(data['email']),
+      programmingLanguage: _asString(data['programmingLanguage']),
+    );
   }
 
   Future<void> updateProfile({
+    required String realName,
     required String nickname,
     required String email,
+    required String avatar,
     required String mobile,
+    required String programmingLanguage,
   }) {
     return _put<void>(
-      '/member/user/update',
-      body: {'nickname': nickname, 'email': email, 'mobile': mobile},
+      '/school/account/profile',
+      body: {
+        'realName': realName,
+        'nickname': nickname,
+        'email': email,
+        'avatar': avatar,
+        'mobile': mobile,
+        'programmingLanguage': programmingLanguage,
+      },
     );
   }
 
@@ -205,8 +239,8 @@ class ItClassApi {
     required String newPassword,
   }) {
     return _put<void>(
-      '/member/user/update-password',
-      body: {'oldPassword': oldPassword, 'password': newPassword},
+      '/school/account/password',
+      body: {'oldPassword': oldPassword, 'newPassword': newPassword},
     );
   }
 
@@ -277,7 +311,7 @@ class ItClassApi {
         'sort': 0,
       },
     );
-    return _asInt(data) ?? 0;
+    return _asInt(data) ?? _asInt(_asMap(data)['id']) ?? 0;
   }
 
   Future<int> createCourseDocument({
@@ -405,6 +439,14 @@ class ItClassApi {
         ],
       },
     );
+  }
+
+  Future<ExamResult> examResult(int attemptId) async {
+    final data = await _get<Map<String, dynamic>>(
+      '/school/exam/result',
+      query: {'attemptId': '$attemptId'},
+    );
+    return _examResultFromJson(data);
   }
 
   Future<ApiPage<CodeReviewItem>> examAttempts() async {
@@ -585,7 +627,7 @@ class ItClassApi {
         .toList();
   }
 
-  Future<int> createStudent({
+  Future<StudentProfile> createStudent({
     required int classroomId,
     required String realName,
     required String username,
@@ -597,12 +639,15 @@ class ItClassApi {
       body: {
         'classroomId': classroomId,
         'realName': realName,
-        'username': username,
+        'nickname': realName,
+        'email': username,
         'password': password,
         'mobile': mobile,
+        'programmingLanguage':
+            ItClassSession.current?.programmingLanguage ?? 'Java',
       },
     );
-    return _asInt(data) ?? 0;
+    return _studentProfileFromAccountJson(_asMap(data));
   }
 
   Future<int> addExistingStudent({
@@ -799,12 +844,19 @@ class ItClassApi {
   }
 
   void _logResponse(http.Response response, {required Duration elapsed}) {
+    final responseBody = utf8.decode(response.bodyBytes);
+    Object? sanitizedBody = responseBody;
+    try {
+      sanitizedBody = _sanitize(jsonDecode(responseBody));
+    } catch (_) {
+      // Preserve non-JSON error bodies in the log.
+    }
     debugPrint(
       '[itClass API] <-- ${response.statusCode} ${response.request?.method ?? ''} '
       '${response.request?.url ?? response.reasonPhrase ?? ''} '
       '(${elapsed.inMilliseconds}ms)\n'
       'headers=${_compactJson(_sanitize(response.headers))}\n'
-      'body=${_trimLogBody(utf8.decode(response.bodyBytes))}',
+      'body=${_compactJson(sanitizedBody)}',
       wrapWidth: 1200,
     );
   }
@@ -865,7 +917,7 @@ String _resolveApiBaseUrl() {
   }
   const buildValue = String.fromEnvironment(
     'TWSCHOOL_API_BASE_URL',
-    defaultValue: '/app-api',
+    defaultValue: 'https://api-dev.tw-onlineschool.com/app-api',
   );
   return _normalizeApiBaseUrl(buildValue);
 }
@@ -905,6 +957,8 @@ LearningVideo _learningVideoFromJson(Map<String, dynamic> json) {
     progress: ((progressPercent ?? 0) / 100).clamp(0.0, 1.0),
     description: _asString(json['description']),
     videoUrl: _asString(json['playUrl'] ?? json['videoUrl']),
+    durationSeconds: durationSeconds,
+    lastPositionSeconds: _asInt(json['lastPositionSeconds']) ?? 0,
   );
 }
 
@@ -925,14 +979,8 @@ Lesson _lessonFromDocumentJson(Map<String, dynamic> json) {
     ),
     summary: description,
     content: url.isEmpty ? description : '$description\n\n資料URL: $url',
-    code: '// ${title.replaceAll('\n', ' ')}',
-    sections: [
-      LessonSection(
-        heading: '教材概要',
-        body: description,
-        keyPoints: const ['教材を読む', '要点を確認する', '問題バンクで復習する'],
-      ),
-    ],
+    code: '',
+    sections: const [],
     exercise: const LessonExercise(
       question: 'この教材を読んだあと、最初に確認するべきことはどれですか？',
       options: ['要点を整理する', '何もせず閉じる', '関係ない動画を見る', 'ログアウトする'],
@@ -942,6 +990,8 @@ Lesson _lessonFromDocumentJson(Map<String, dynamic> json) {
       standardAnswer: '教材の要点をまとめ、関連問題を解きます。',
     ),
     aiSummary: description,
+    documentUrl: url,
+    fileName: _asString(json['fileName']),
   );
 }
 
@@ -951,8 +1001,6 @@ ExamQuestion _examQuestionFromJson(Map<String, dynamic> json) {
   final optionKeys = labels
       .map((item) => _asString(item['optionKey']))
       .toList();
-  final saved = _asString(json['savedAnswer']);
-  final answerIndex = saved.isEmpty ? 0 : optionKeys.indexOf(saved);
   return ExamQuestion(
     paperQuestionId: _asInt(json['paperQuestionId']),
     questionId: _asInt(json['questionId']),
@@ -969,11 +1017,32 @@ ExamQuestion _examQuestionFromJson(Map<String, dynamic> json) {
           ),
         )
         .toList(),
-    answerIndex: answerIndex < 0 ? 0 : answerIndex,
+    answerIndex: -1,
     explanation: _asString(
       json['analysis'] ?? json['referenceAnswer'],
       fallback: '提出後に結果を確認してください。',
     ),
+  );
+}
+
+ExamResult _examResultFromJson(Map<String, dynamic> json) {
+  return ExamResult(
+    attemptId: _asInt(json['attemptId']) ?? 0,
+    totalScore: _asDouble(json['totalScore']) ?? 0,
+    paperTotalScore: _asDouble(json['paperTotalScore']) ?? 0,
+    passed: json['passed'] is bool ? json['passed'] as bool : null,
+    answersVisible: json['answersVisible'] == true,
+    answers: _asList(json['answers']).map((item) {
+      final answer = _asMap(item);
+      return ExamAnswerResult(
+        paperQuestionId: _asInt(answer['paperQuestionId']) ?? 0,
+        answerContent: _asString(answer['answerContent']),
+        referenceAnswer: _asString(answer['referenceAnswer']),
+        analysis: _asString(answer['analysis']),
+        score: _asDouble(answer['score']) ?? 0,
+        correct: answer['correct'] is bool ? answer['correct'] as bool : null,
+      );
+    }).toList(),
   );
 }
 
@@ -1030,12 +1099,11 @@ StudentProfile _studentProfileFromContactJson(Map<String, dynamic> json) {
   return StudentProfile(
     _asString(json['realName'] ?? json['nickname'], fallback: 'Student'),
     _asString(json['classroomName'], fallback: '学生'),
-    'チャット履歴を取得できます。',
+    '会話履歴を開く',
     accountId: _asInt(json['accountId']),
     classroomId: _asInt(json['classroomId']),
     accountNo: _asString(json['accountNo']),
     email: _asString(json['accountNo']),
-    password: '******',
     phone: '',
   );
 }
@@ -1044,11 +1112,10 @@ StudentProfile _studentProfileFromAccountJson(Map<String, dynamic> json) {
   return StudentProfile(
     _asString(json['realName'] ?? json['nickname'], fallback: 'Student'),
     _asString(json['status']) == '0' ? '生徒 · 有効' : '生徒',
-    'まだ質問はありません。',
+    '学生アカウント',
     accountId: _asInt(json['id']),
     accountNo: _asString(json['accountNo']),
     email: _asString(json['email'] ?? json['username'] ?? json['accountNo']),
-    password: '******',
     phone: _asString(json['mobile']),
   );
 }
@@ -1204,6 +1271,17 @@ int? _asInt(Object? value) {
   if (value is int) return value;
   if (value is num) return value.toInt();
   return int.tryParse('${value ?? ''}');
+}
+
+double? _asDouble(Object? value) {
+  if (value is num) return value.toDouble();
+  return double.tryParse('${value ?? ''}');
+}
+
+DateTime? _asDateTime(Object? value) {
+  if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+  if (value is num) return DateTime.fromMillisecondsSinceEpoch(value.toInt());
+  return DateTime.tryParse('${value ?? ''}');
 }
 
 String _asString(Object? value, {String fallback = ''}) {

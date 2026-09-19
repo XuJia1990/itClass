@@ -357,7 +357,6 @@ class _CompactListCard extends StatelessWidget {
     required this.detail,
     required this.onTap,
     this.selected = false,
-    this.trailing,
     this.badge,
   });
 
@@ -366,7 +365,6 @@ class _CompactListCard extends StatelessWidget {
   final String detail;
   final VoidCallback onTap;
   final bool selected;
-  final String? trailing;
   final String? badge;
 
   @override
@@ -424,14 +422,6 @@ class _CompactListCard extends StatelessWidget {
                                 : const Color(0xFF047857),
                             fontSize: 12,
                           ),
-                        ),
-                      ),
-                    if (trailing != null)
-                      Text(
-                        trailing!,
-                        style: const TextStyle(
-                          color: Color(0xFF0EA5E9),
-                          fontSize: 12,
                         ),
                       ),
                   ],
@@ -1048,14 +1038,26 @@ class _LearningWorkspace extends StatefulWidget {
     required this.videos,
     required this.videoProgress,
     required this.onVideoProgressChanged,
+    required this.onVideoPositionSaved,
     required this.mode,
+    required this.exams,
+    required this.onOpenExam,
   });
 
   final Lesson lesson;
   final List<LearningVideo> videos;
   final List<double> videoProgress;
   final void Function(int index, double progress) onVideoProgressChanged;
+  final Future<void> Function(
+    int index,
+    int positionSeconds,
+    int durationSeconds,
+    bool ended,
+  )
+  onVideoPositionSaved;
   final LearningMode mode;
+  final List<SchoolExamSummary> exams;
+  final ValueChanged<int> onOpenExam;
 
   @override
   State<_LearningWorkspace> createState() => _LearningWorkspaceState();
@@ -1063,7 +1065,6 @@ class _LearningWorkspace extends StatefulWidget {
 
 class _LearningWorkspaceState extends State<_LearningWorkspace> {
   String _subject = 'Java基礎';
-  bool _showSummary = false;
 
   @override
   Widget build(BuildContext context) {
@@ -1077,9 +1078,13 @@ class _LearningWorkspaceState extends State<_LearningWorkspace> {
             videos: widget.videos,
             progress: widget.videoProgress,
             onProgressChanged: widget.onVideoProgressChanged,
+            onPositionSaved: widget.onVideoPositionSaved,
           )
         else if (widget.mode == LearningMode.questionBank)
-          _QuestionBankOutlineWorkspace(lesson: lesson)
+          _QuestionBankOutlineWorkspace(
+            exams: widget.exams,
+            onOpenExam: widget.onOpenExam,
+          )
         else ...[
           _WorkspaceControlBar(
             label: '学習言語',
@@ -1099,7 +1104,30 @@ class _LearningWorkspaceState extends State<_LearningWorkspace> {
           Card(
             child: Padding(
               padding: const EdgeInsets.all(18),
-              child: Text(lesson.content, style: const TextStyle(height: 1.7)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(lesson.summary, style: const TextStyle(height: 1.7)),
+                  if (lesson.fileName.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      lesson.fileName,
+                      style: const TextStyle(color: _AppPalette.muted),
+                    ),
+                  ],
+                  if (lesson.documentUrl.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    FilledButton.icon(
+                      onPressed: () => launchUrl(
+                        Uri.parse(lesson.documentUrl),
+                        mode: LaunchMode.externalApplication,
+                      ),
+                      icon: const Icon(Icons.open_in_new_rounded),
+                      label: const Text('教材を開く'),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -1107,34 +1135,17 @@ class _LearningWorkspaceState extends State<_LearningWorkspace> {
             _LessonSectionCard(section: section),
             const SizedBox(height: 12),
           ],
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'サンプルコード',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 10),
-                  SelectableText(
-                    lesson.code,
-                    style: const TextStyle(fontFamily: 'monospace'),
-                  ),
-                ],
+          if (lesson.code.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: SelectableText(
+                  lesson.code,
+                  style: const TextStyle(fontFamily: 'monospace'),
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: () => setState(() => _showSummary = !_showSummary),
-            icon: const Icon(Icons.auto_awesome_rounded),
-            label: Text(_showSummary ? 'AIまとめを閉じる' : 'AIまとめ・解析'),
-          ),
-          if (_showSummary) ...[
-            const SizedBox(height: 12),
-            _AiSummaryCard(summary: lesson.aiSummary),
           ],
         ],
       ],
@@ -1147,11 +1158,19 @@ class _VideoLearningWorkspace extends StatelessWidget {
     required this.videos,
     required this.progress,
     required this.onProgressChanged,
+    required this.onPositionSaved,
   });
 
   final List<LearningVideo> videos;
   final List<double> progress;
   final void Function(int index, double progress) onProgressChanged;
+  final Future<void> Function(
+    int index,
+    int positionSeconds,
+    int durationSeconds,
+    bool ended,
+  )
+  onPositionSaved;
 
   @override
   Widget build(BuildContext context) {
@@ -1203,6 +1222,9 @@ class _VideoLearningWorkspace extends StatelessWidget {
             video: videos[i],
             progress: progress[i],
             onMarkWatched: () => onProgressChanged(i, 1.0),
+            onProgressChanged: (value) => onProgressChanged(i, value),
+            onPositionSaved: (position, duration, ended) =>
+                onPositionSaved(i, position, duration, ended),
           ),
       ],
     );
@@ -1214,11 +1236,16 @@ class _VideoProgressCard extends StatefulWidget {
     required this.video,
     required this.progress,
     required this.onMarkWatched,
+    required this.onProgressChanged,
+    required this.onPositionSaved,
   });
 
   final LearningVideo video;
   final double progress;
   final VoidCallback onMarkWatched;
+  final ValueChanged<double> onProgressChanged;
+  final Future<void> Function(int position, int duration, bool ended)
+  onPositionSaved;
 
   @override
   State<_VideoProgressCard> createState() => _VideoProgressCardState();
@@ -1229,9 +1256,13 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
   bool _showPlayer = false;
   bool _loading = false;
   String? _error;
+  int _lastUiSecond = -1;
+  int _lastSavedSecond = -1;
+  bool _endedSaved = false;
 
   @override
   void dispose() {
+    _controller?.removeListener(_handlePlaybackProgress);
     _controller?.dispose();
     super.dispose();
   }
@@ -1318,9 +1349,7 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
                   ),
                 ),
                 OutlinedButton.icon(
-                  onPressed: widget.progress >= 1.0
-                      ? null
-                      : widget.onMarkWatched,
+                  onPressed: widget.progress >= 1.0 ? null : _markWatched,
                   icon: const Icon(Icons.check_circle_outline_rounded),
                   label: Text(widget.progress >= 1.0 ? '視聴済み' : '視聴済みにする'),
                 ),
@@ -1356,6 +1385,12 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
       );
       await controller.initialize();
       await controller.setLooping(false);
+      if (widget.video.lastPositionSeconds > 0) {
+        await controller.seekTo(
+          Duration(seconds: widget.video.lastPositionSeconds),
+        );
+      }
+      controller.addListener(_handlePlaybackProgress);
       if (!mounted) {
         await controller.dispose();
         return;
@@ -1369,6 +1404,32 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
     }
   }
 
+  void _handlePlaybackProgress() {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    final position = controller.value.position.inSeconds;
+    final duration = controller.value.duration.inSeconds;
+    if (duration <= 0) return;
+    final ended = controller.value.isCompleted || position >= duration;
+    if (position != _lastUiSecond) {
+      _lastUiSecond = position;
+      widget.onProgressChanged((position / duration).clamp(0.0, 1.0));
+      if (mounted) setState(() {});
+    }
+    if ((position - _lastSavedSecond >= 5) || (ended && !_endedSaved)) {
+      _lastSavedSecond = position;
+      _endedSaved = ended;
+      unawaited(widget.onPositionSaved(position, duration, ended));
+    }
+  }
+
+  void _markWatched() {
+    final duration =
+        _controller?.value.duration.inSeconds ?? widget.video.durationSeconds;
+    widget.onMarkWatched();
+    unawaited(widget.onPositionSaved(duration, duration, true));
+  }
+
   Widget _videoPlayerArea() {
     final controller = _controller;
 
@@ -1376,7 +1437,7 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
       return const _InlineNotice(
         tone: _NoticeTone.warning,
         title: '動画読み込み中',
-        message: '公開サンプル動画を読み込んでいます。',
+        message: '授業動画を読み込んでいます。',
       );
     }
 
@@ -1453,25 +1514,43 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
 }
 
 class _QuestionBankOutlineWorkspace extends StatelessWidget {
-  const _QuestionBankOutlineWorkspace({required this.lesson});
+  const _QuestionBankOutlineWorkspace({
+    required this.exams,
+    required this.onOpenExam,
+  });
 
-  final Lesson lesson;
+  final List<SchoolExamSummary> exams;
+  final ValueChanged<int> onOpenExam;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SectionHeader(
+        const _SectionHeader(
           icon: Icons.account_tree_rounded,
-          title: '${lesson.title}：問題バンク',
-          subtitle: 'バックエンド教材から取得した小分類を確認します。',
+          title: '問題バンク',
+          subtitle: 'バックエンドで公開されているテスト問題を確認します。',
         ),
         const SizedBox(height: 16),
-        for (final section in lesson.sections) ...[
-          _LessonSectionCard(section: section),
-          const SizedBox(height: 14),
-        ],
+        if (exams.isEmpty)
+          const _InlineNotice(
+            tone: _NoticeTone.warning,
+            title: '問題データがありません',
+            message: '先生がテストを公開すると、ここに表示されます。',
+          ),
+        for (var i = 0; i < exams.length; i++)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.quiz_outlined),
+              title: Text(exams[i].title),
+              subtitle: Text(
+                '${exams[i].isAvailable ? '受験可能' : '受付終了'} · ${exams[i].description}',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: exams[i].isAvailable ? () => onOpenExam(i) : null,
+            ),
+          ),
       ],
     );
   }
@@ -1518,44 +1597,6 @@ class _LessonSectionCard extends StatelessWidget {
   }
 }
 
-class _AiSummaryCard extends StatelessWidget {
-  const _AiSummaryCard({required this.summary});
-
-  final String summary;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _AppPalette.washBlue,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: _AppPalette.line),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.auto_awesome_rounded, color: _AppPalette.sky),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'AIまとめ・解析',
-                  style: TextStyle(fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 6),
-                Text(summary, style: const TextStyle(height: 1.6)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _ExamWorkspace extends StatelessWidget {
   const _ExamWorkspace({
     required this.lesson,
@@ -1564,6 +1605,7 @@ class _ExamWorkspace extends StatelessWidget {
     required this.submittedIndexes,
     required this.onSelect,
     required this.onSubmit,
+    required this.result,
   });
 
   final Lesson lesson;
@@ -1572,6 +1614,7 @@ class _ExamWorkspace extends StatelessWidget {
   final Set<int> submittedIndexes;
   final void Function(int questionIndex, int answerIndex) onSelect;
   final ValueChanged<int> onSubmit;
+  final ExamResult? result;
 
   @override
   Widget build(BuildContext context) {
@@ -1588,6 +1631,7 @@ class _ExamWorkspace extends StatelessWidget {
           questions: questions,
           selectedAnswers: selectedAnswers,
           submittedIndexes: submittedIndexes,
+          result: result,
         ),
         const SizedBox(height: 16),
         for (
@@ -1602,6 +1646,9 @@ class _ExamWorkspace extends StatelessWidget {
               question: questions[questionIndex],
               selectedAnswer: selectedAnswers[questionIndex],
               submitted: submittedIndexes.contains(questionIndex),
+              answerResult: result?.answerFor(
+                questions[questionIndex].paperQuestionId,
+              ),
               onSelect: (answerIndex) => onSelect(questionIndex, answerIndex),
               onSubmit: () => onSubmit(questionIndex),
             ),
@@ -1616,25 +1663,20 @@ class _ExamProgressCard extends StatelessWidget {
     required this.questions,
     required this.selectedAnswers,
     required this.submittedIndexes,
+    required this.result,
   });
 
   final List<ExamQuestion> questions;
   final Map<int, int> selectedAnswers;
   final Set<int> submittedIndexes;
+  final ExamResult? result;
 
   @override
   Widget build(BuildContext context) {
     final total = questions.length;
     final submitted = submittedIndexes.length;
     final progress = total == 0 ? 0.0 : submitted / total;
-    var correct = 0;
-    for (var i = 0; i < questions.length; i++) {
-      if (submittedIndexes.contains(i) &&
-          selectedAnswers[i] == questions[i].answerIndex) {
-        correct++;
-      }
-    }
-    final score = total == 0 ? 0 : ((correct / total) * 100).round();
+    final score = result?.totalScore.round();
 
     return Card(
       child: Padding(
@@ -1667,7 +1709,7 @@ class _ExamProgressCard extends StatelessWidget {
               runSpacing: 10,
               children: [
                 _MetricPill('提出', '$submitted/$total問'),
-                _MetricPill('自動採点', '$score点'),
+                _MetricPill('自動採点', score == null ? '未採点' : '$score点'),
                 _MetricPill('残り', '${total - submitted}問'),
               ],
             ),
@@ -1709,6 +1751,7 @@ class _ExamQuestionCard extends StatelessWidget {
     required this.submitted,
     required this.onSelect,
     required this.onSubmit,
+    required this.answerResult,
   });
 
   final int number;
@@ -1717,10 +1760,11 @@ class _ExamQuestionCard extends StatelessWidget {
   final bool submitted;
   final ValueChanged<int> onSelect;
   final VoidCallback onSubmit;
+  final ExamAnswerResult? answerResult;
 
   @override
   Widget build(BuildContext context) {
-    final isCorrect = submitted && selectedAnswer == question.answerIndex;
+    final isCorrect = answerResult?.correct;
 
     return Card(
       child: Padding(
@@ -1768,17 +1812,31 @@ class _ExamQuestionCard extends StatelessWidget {
                   icon: const Icon(Icons.check_rounded),
                   label: Text(submitted ? '再採点' : '回答を提出'),
                 ),
-                if (submitted) _StatusPill(isCorrect ? '正解' : '要復習'),
+                if (answerResult != null)
+                  _StatusPill(
+                    isCorrect == null
+                        ? '採点待ち'
+                        : isCorrect
+                        ? '正解'
+                        : '要復習',
+                  )
+                else if (submitted)
+                  const _StatusPill('保存済み'),
               ],
             ),
-            if (submitted) ...[
+            if (answerResult != null) ...[
               const SizedBox(height: 12),
               _InlineNotice(
-                tone: isCorrect ? _NoticeTone.success : _NoticeTone.warning,
-                title: isCorrect ? '正しいポイント' : '間違いの理由',
-                message: isCorrect
-                    ? question.explanation
-                    : '${question.explanation}\n正解：${question.options[question.answerIndex]}',
+                tone: isCorrect == true
+                    ? _NoticeTone.success
+                    : _NoticeTone.warning,
+                title: isCorrect == true ? '正解' : '採点結果',
+                message: [
+                  if (answerResult!.analysis.isNotEmpty) answerResult!.analysis,
+                  if (answerResult!.referenceAnswer.isNotEmpty)
+                    '参考答案：${answerResult!.referenceAnswer}',
+                  '得点：${answerResult!.score.round()}点',
+                ].join('\n'),
               ),
             ],
           ],
@@ -1971,7 +2029,7 @@ class _TeacherRequestWorkspace extends StatelessWidget {
           minLines: 5,
           maxLines: 8,
           decoration: InputDecoration(
-            hintText: '学生への回答を入力してください。AI再学習資料としても保存されます。',
+            hintText: '学生への回答を入力してください。',
             filled: true,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
           ),
@@ -2018,7 +2076,7 @@ class _TeacherCodeReviewWorkspace extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 8),
-                  Text('AIスコア：${item.score} / 100'),
+                  Text('得点：${item.score}点'),
                   Text('コメント：${item.feedback}'),
                 ],
               ),
@@ -2042,13 +2100,22 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
   final _controller = TextEditingController();
   final List<ChatMessage> _messages = [];
   int? _conversationId;
+  bool _loading = false;
 
   @override
   void initState() {
     super.initState();
-    _messages
-      ..add(ChatMessage.student(widget.student.lastQuestion))
-      ..add(ChatMessage.teacher('まずエラー内容を確認し、実行できる修正版を提案します。'));
+    unawaited(_loadConversation());
+  }
+
+  @override
+  void didUpdateWidget(covariant _TeacherChatWorkspace oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.student.accountId != widget.student.accountId ||
+        oldWidget.student.classroomId != widget.student.classroomId) {
+      _conversationId = null;
+      unawaited(_loadConversation());
+    }
   }
 
   @override
@@ -2068,7 +2135,16 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
           subtitle: widget.student.status,
         ),
         const SizedBox(height: 16),
-        for (final message in _messages) _MessageBubble(message: message),
+        if (_loading)
+          const Center(child: CircularProgressIndicator())
+        else if (_messages.isEmpty)
+          const _InlineNotice(
+            tone: _NoticeTone.warning,
+            title: 'メッセージはありません',
+            message: '最初のメッセージを送信できます。',
+          )
+        else
+          for (final message in _messages) _MessageBubble(message: message),
         const SizedBox(height: 16),
         TextField(
           controller: _controller,
@@ -2096,10 +2172,6 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
   Future<void> _send() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
-    setState(() {
-      _messages.add(ChatMessage.teacher(text));
-      _controller.clear();
-    });
     try {
       final student = widget.student;
       if (student.accountId == null || student.classroomId == null) {
@@ -2112,15 +2184,50 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
             peerAccountId: student.accountId!,
           );
       _conversationId = conversationId;
-      await ItClassApi.instance.sendChatMessage(
+      final message = await ItClassApi.instance.sendChatMessage(
         conversationId: conversationId,
         content: text,
       );
+      if (!mounted) return;
+      setState(() {
+        _messages.add(message);
+        _controller.clear();
+      });
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('返信送信に失敗しました：$error')));
+    }
+  }
+
+  Future<void> _loadConversation() async {
+    setState(() {
+      _loading = true;
+      _messages.clear();
+    });
+    try {
+      final student = widget.student;
+      if (student.accountId == null || student.classroomId == null) {
+        throw const ApiException('学生IDまたはクラスIDがありません。');
+      }
+      final conversationId = await ItClassApi.instance.getOrCreateChat(
+        classroomId: student.classroomId!,
+        peerAccountId: student.accountId!,
+      );
+      final messages = await ItClassApi.instance.chatMessages(conversationId);
+      if (!mounted) return;
+      setState(() {
+        _conversationId = conversationId;
+        _messages.addAll(messages);
+      });
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('会話履歴の取得に失敗しました：$error')));
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 }
@@ -2208,7 +2315,7 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
           _UploadDropZone(
             icon: Icons.picture_as_pdf_rounded,
             title: 'PDF教材をアップロード',
-            subtitle: 'PDF教材を AI教室の文書学習に登録し、問題バンク生成やAI再学習の素材にします。',
+            subtitle: 'PDF教材を AI教室の文書学習に登録します。',
             buttonLabel: 'PDFファイルを選択',
             allowedExtensions: const ['pdf'],
             fileType: FileType.custom,
@@ -2952,12 +3059,14 @@ class _UserRoleManagementWorkspace extends StatefulWidget {
   const _UserRoleManagementWorkspace({
     required this.section,
     required this.classrooms,
-    required this.initialStudents,
+    required this.assignedStudents,
+    required this.allStudents,
   });
 
   final SystemManagementSection section;
   final List<SchoolClassroom> classrooms;
-  final List<StudentProfile> initialStudents;
+  final List<StudentProfile> assignedStudents;
+  final List<StudentProfile> allStudents;
 
   @override
   State<_UserRoleManagementWorkspace> createState() =>
@@ -2971,15 +3080,28 @@ class _UserRoleManagementWorkspaceState
   final _passwordController = TextEditingController();
   final _phoneController = TextEditingController();
   late List<StudentProfile> _managedStudents;
-  late String _existingStudent;
+  late Set<int> _assignedStudentIds;
+  int? _existingStudentId;
+
+  List<StudentProfile> get _availableStudents => _managedStudents
+      .where(
+        (student) =>
+            student.accountId != null &&
+            !_assignedStudentIds.contains(student.accountId),
+      )
+      .toList();
 
   @override
   void initState() {
     super.initState();
-    _managedStudents = List.of(widget.initialStudents);
-    _existingStudent = _managedStudents.isEmpty
-        ? ''
-        : _managedStudents.first.name;
+    _managedStudents = List.of(widget.allStudents);
+    _assignedStudentIds = widget.assignedStudents
+        .map((student) => student.accountId)
+        .whereType<int>()
+        .toSet();
+    _existingStudentId = _availableStudents.isEmpty
+        ? null
+        : _availableStudents.first.accountId;
   }
 
   @override
@@ -3111,28 +3233,26 @@ class _UserRoleManagementWorkspaceState
             Row(
               children: [
                 Expanded(
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _existingStudent.isEmpty
-                        ? null
-                        : _existingStudent,
+                  child: DropdownButtonFormField<int>(
+                    initialValue: _existingStudentId,
                     decoration: const InputDecoration(labelText: '既存学生'),
                     items: [
-                      for (final student in _managedStudents)
+                      for (final student in _availableStudents)
                         DropdownMenuItem(
-                          value: student.name,
+                          value: student.accountId,
                           child: Text('${student.name} · ${student.email}'),
                         ),
                     ],
                     onChanged: (value) {
                       if (value != null) {
-                        setState(() => _existingStudent = value);
+                        setState(() => _existingStudentId = value);
                       }
                     },
                   ),
                 ),
                 const SizedBox(width: 10),
                 OutlinedButton.icon(
-                  onPressed: _managedStudents.isEmpty
+                  onPressed: _availableStudents.isEmpty
                       ? null
                       : _addExistingStudent,
                   icon: const Icon(Icons.group_add_rounded),
@@ -3153,7 +3273,7 @@ class _UserRoleManagementWorkspaceState
         const _SectionHeader(
           icon: Icons.groups_rounded,
           title: '全学生',
-          subtitle: '全学生のアカウント、メール、連絡先、初期パスワードを確認します。',
+          subtitle: '全学生のアカウント、メール、連絡先を確認します。',
         ),
         const SizedBox(height: 12),
         if (_managedStudents.isEmpty)
@@ -3169,7 +3289,6 @@ class _UserRoleManagementWorkspaceState
             role: '学生',
             status: student.status,
             phone: student.phone,
-            password: student.password,
           ),
       ],
     );
@@ -3188,7 +3307,7 @@ class _UserRoleManagementWorkspaceState
     }
     try {
       if (widget.classrooms.isNotEmpty) {
-        final id = await ItClassApi.instance.createStudent(
+        final student = await ItClassApi.instance.createStudent(
           classroomId: widget.classrooms.first.id,
           realName: name,
           username: email,
@@ -3197,25 +3316,19 @@ class _UserRoleManagementWorkspaceState
         );
         if (!mounted) return;
         setState(() {
-          _managedStudents.add(
-            StudentProfile(
-              name,
-              '生徒 · 新規作成',
-              'まだ質問はありません。',
-              accountId: id,
-              classroomId: widget.classrooms.first.id,
-              email: email,
-              password: password,
-              phone: phone,
-            ),
-          );
+          _managedStudents.add(student);
+          if (student.accountId != null) {
+            _assignedStudentIds.add(student.accountId!);
+          }
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('学生アカウント ${student.accountNo ?? ''} を作成しました。'),
+          ),
+        );
       } else {
         throw const ApiException('担当クラスがありません。');
       }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('学生アカウントを作成しました。')));
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -3225,15 +3338,11 @@ class _UserRoleManagementWorkspaceState
   }
 
   Future<void> _addExistingStudent() async {
-    if (_managedStudents.isEmpty) return;
+    if (_existingStudentId == null) return;
     final existing = _managedStudents.firstWhere(
-      (student) => student.name == _existingStudent,
+      (student) => student.accountId == _existingStudentId,
     );
-    final alreadyAdded = _managedStudents.any(
-      (student) =>
-          student.email == existing.email && student.classroomId != null,
-    );
-    if (alreadyAdded) {
+    if (_assignedStudentIds.contains(existing.accountId)) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('${existing.name} はすでに一覧にあります。')));
@@ -3248,7 +3357,12 @@ class _UserRoleManagementWorkspaceState
         studentAccountId: existing.accountId!,
       );
       if (!mounted) return;
-      setState(() => _managedStudents.add(existing));
+      setState(() {
+        _assignedStudentIds.add(existing.accountId!);
+        _existingStudentId = _availableStudents.isEmpty
+            ? null
+            : _availableStudents.first.accountId;
+      });
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('${existing.name} を追加しました。')));
@@ -3268,7 +3382,6 @@ class _UserRoleCard extends StatelessWidget {
     required this.role,
     required this.status,
     required this.phone,
-    required this.password,
   });
 
   final String name;
@@ -3276,7 +3389,6 @@ class _UserRoleCard extends StatelessWidget {
   final String role;
   final String status;
   final String phone;
-  final String password;
 
   @override
   Widget build(BuildContext context) {
@@ -3284,7 +3396,7 @@ class _UserRoleCard extends StatelessWidget {
       child: ListTile(
         leading: CircleAvatar(child: Text(name.substring(0, 1))),
         title: Text(name),
-        subtitle: Text('$email\n$status · $phone · 初期PW: $password'),
+        subtitle: Text('$email\n$status · $phone · パスワード設定済み'),
         isThreeLine: true,
         trailing: Chip(
           label: Text(role),
@@ -3308,8 +3420,8 @@ Widget _settingsMiddlePanel({
       _CompactListCard(
         selected: selected == ProfileSettingSection.profile,
         title: 'プロフィール',
-        subtitle: '名前・メール',
-        detail: '名前とメールを変更します。',
+        subtitle: 'ニックネーム・メール',
+        detail: 'ニックネームとメールを変更します。',
         onTap: () => onSelect(ProfileSettingSection.profile),
       ),
       _CompactListCard(
@@ -3323,21 +3435,21 @@ Widget _settingsMiddlePanel({
         selected: selected == ProfileSettingSection.password,
         title: 'パスワード',
         subtitle: 'ログイン情報',
-        detail: '新しいパスワードと確認パスワードを入力します。',
+        detail: '現在のパスワードを確認して新しいパスワードに変更します。',
         onTap: () => onSelect(ProfileSettingSection.password),
       ),
       _CompactListCard(
         selected: selected == ProfileSettingSection.contact,
         title: '連絡先',
         subtitle: '電話番号',
-        detail: '連絡先と通知先を変更します。',
+        detail: '学校アカウントの電話番号を変更します。',
         onTap: () => onSelect(ProfileSettingSection.contact),
       ),
       _CompactListCard(
         selected: selected == ProfileSettingSection.basicInfo,
-        title: '基本情報',
-        subtitle: '自己紹介',
-        detail: '学習状況や担当内容などを編集します。',
+        title: 'アカウント情報',
+        subtitle: 'プログラミング言語',
+        detail: 'オンライン教室アカウントの学習言語を変更します。',
         onTap: () => onSelect(ProfileSettingSection.basicInfo),
       ),
     ],
@@ -3372,14 +3484,19 @@ class _ProfileSettingsWorkspace extends StatefulWidget {
 
 class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
   late final TextEditingController _nameController;
-  final _passwordController = TextEditingController(text: 'password');
-  final _confirmPasswordController = TextEditingController(text: 'password');
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+  final _oldPasswordController = TextEditingController();
   late final TextEditingController _avatarController;
   late final TextEditingController _phoneController;
   late final TextEditingController _emailController;
   late final TextEditingController _basicInfoController;
   late String _savedName;
   late String _savedEmail;
+  late String _savedPhone;
+  late String _savedAvatar;
+  bool _loadingProfile = false;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -3391,6 +3508,9 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
     _basicInfoController = TextEditingController(text: widget.initialBasicInfo);
     _savedName = widget.initialName;
     _savedEmail = widget.initialEmail;
+    _savedPhone = widget.initialPhone;
+    _savedAvatar = widget.initialAvatar;
+    unawaited(_loadProfile());
   }
 
   @override
@@ -3398,6 +3518,7 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
     _nameController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _oldPasswordController.dispose();
     _avatarController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
@@ -3427,15 +3548,20 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
                     CircleAvatar(
                       radius: 34,
                       backgroundColor: _AppPalette.washBlue,
-                      child: Text(
-                        _nameController.text.isEmpty
-                            ? '学'
-                            : _nameController.text.substring(0, 1),
-                        style: const TextStyle(
-                          color: _AppPalette.sky,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
+                      backgroundImage: _avatarController.text.isEmpty
+                          ? null
+                          : NetworkImage(_avatarController.text),
+                      child: _avatarController.text.isEmpty
+                          ? Text(
+                              _nameController.text.isEmpty
+                                  ? '学'
+                                  : _nameController.text.substring(0, 1),
+                              style: const TextStyle(
+                                color: _AppPalette.sky,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            )
+                          : null,
                     ),
                     const SizedBox(width: 14),
                     Expanded(
@@ -3473,22 +3599,25 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
                   },
                 ),
                 const SizedBox(height: 16),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    FilledButton.icon(
-                      onPressed: _saveProfile,
-                      icon: const Icon(Icons.save_rounded),
-                      label: const Text('保存'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: _resetProfile,
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('リセット'),
-                    ),
-                  ],
-                ),
+                if (_loadingProfile)
+                  const LinearProgressIndicator()
+                else
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      FilledButton.icon(
+                        onPressed: _saving ? null : _saveProfile,
+                        icon: const Icon(Icons.save_rounded),
+                        label: Text(_saving ? '保存中' : '保存'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _resetProfile,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('リセット'),
+                      ),
+                    ],
+                  ),
               ],
             ),
           ),
@@ -3497,48 +3626,119 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
     );
   }
 
-  void _chooseAvatar() {
-    setState(() => _avatarController.text = 'new-profile-avatar.png');
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('アイコンを選択しました。保存すると反映されます。')));
+  Future<void> _chooseAvatar() async {
+    final result = await FilePicker.pickFiles(
+      type: FileType.image,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    setState(() => _saving = true);
+    try {
+      final url = await ItClassApi.instance.uploadFile(
+        result.files.single,
+        directory: 'itclass/avatar',
+      );
+      if (!mounted) return;
+      setState(() => _avatarController.text = url);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('アイコンをアップロードしました。保存すると反映されます。')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('アイコンのアップロードに失敗しました：$error')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<void> _saveProfile() async {
-    if (_passwordController.text != _confirmPasswordController.text) {
+    if (widget.section == ProfileSettingSection.password &&
+        _passwordController.text.length < 4) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('新しいパスワードは4文字以上で入力してください。')));
+      return;
+    }
+    if (widget.section == ProfileSettingSection.password &&
+        _passwordController.text != _confirmPasswordController.text) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('パスワードと確認パスワードが一致しません。')));
       return;
     }
 
+    setState(() => _saving = true);
     try {
-      await ItClassApi.instance.updateProfile(
-        nickname: _nameController.text.trim(),
-        email: _emailController.text.trim(),
-        mobile: _phoneController.text.trim(),
-      );
       if (widget.section == ProfileSettingSection.password) {
+        if (_oldPasswordController.text.isEmpty) {
+          throw const ApiException('現在のパスワードを入力してください。');
+        }
         await ItClassApi.instance.updatePassword(
-          oldPassword: 'password',
+          oldPassword: _oldPasswordController.text,
           newPassword: _passwordController.text,
+        );
+      } else {
+        await ItClassApi.instance.updateProfile(
+          realName: widget.initialName,
+          nickname: _nameController.text.trim(),
+          email: _emailController.text.trim(),
+          avatar: _avatarController.text.trim(),
+          mobile: _phoneController.text.trim(),
+          programmingLanguage: _basicInfoController.text.trim(),
         );
       }
       if (!mounted) return;
       setState(() {
         _savedName = _nameController.text.trim().isEmpty
-            ? '学生'
+            ? widget.roleTitle
             : _nameController.text.trim();
         _savedEmail = _emailController.text.trim();
+        _savedPhone = _phoneController.text.trim();
+        _savedAvatar = _avatarController.text.trim();
+        _passwordController.clear();
+        _confirmPasswordController.clear();
+        _oldPasswordController.clear();
       });
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('学生情報を保存しました。')));
+      ).showSnackBar(const SnackBar(content: Text('プロフィールを保存しました。')));
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('保存に失敗しました：$error')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _loadProfile() async {
+    setState(() => _loadingProfile = true);
+    try {
+      final profile = await ItClassApi.instance.getCurrentUser();
+      if (!mounted) return;
+      setState(() {
+        _nameController.text = profile.nickname.isEmpty
+            ? widget.initialName
+            : profile.nickname;
+        _emailController.text = profile.email;
+        _phoneController.text = profile.mobile;
+        _avatarController.text = profile.avatar;
+        _savedName = _nameController.text;
+        _savedEmail = profile.email;
+        _savedPhone = profile.mobile;
+        _savedAvatar = profile.avatar;
+        _basicInfoController.text = profile.programmingLanguage;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('プロフィール取得に失敗しました：$error')));
+    } finally {
+      if (mounted) setState(() => _loadingProfile = false);
     }
   }
 
@@ -3546,10 +3746,11 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
     setState(() {
       _nameController.text = _savedName;
       _emailController.text = _savedEmail;
-      _passwordController.text = 'password';
-      _confirmPasswordController.text = 'password';
-      _avatarController.text = widget.initialAvatar;
-      _phoneController.text = widget.initialPhone;
+      _passwordController.clear();
+      _confirmPasswordController.clear();
+      _oldPasswordController.clear();
+      _avatarController.text = _savedAvatar;
+      _phoneController.text = _savedPhone;
       _basicInfoController.text = widget.initialBasicInfo;
     });
   }
@@ -3564,7 +3765,7 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
               TextField(
                 controller: _nameController,
                 decoration: const InputDecoration(
-                  labelText: '名前',
+                  labelText: 'ニックネーム',
                   prefixIcon: Icon(Icons.person_outline_rounded),
                 ),
                 onChanged: (_) => setState(() {}),
@@ -3595,16 +3796,21 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
                 CircleAvatar(
                   radius: 42,
                   backgroundColor: Colors.white,
-                  child: Text(
-                    _nameController.text.isEmpty
-                        ? '学'
-                        : _nameController.text.substring(0, 1),
-                    style: const TextStyle(
-                      color: _AppPalette.sky,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 24,
-                    ),
-                  ),
+                  backgroundImage: _avatarController.text.isEmpty
+                      ? null
+                      : NetworkImage(_avatarController.text),
+                  child: _avatarController.text.isEmpty
+                      ? Text(
+                          _nameController.text.isEmpty
+                              ? '学'
+                              : _nameController.text.substring(0, 1),
+                          style: const TextStyle(
+                            color: _AppPalette.sky,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 24,
+                          ),
+                        )
+                      : null,
                 ),
                 const SizedBox(height: 12),
                 Text(_avatarController.text),
@@ -3628,6 +3834,15 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
         ];
       case ProfileSettingSection.password:
         return [
+          TextField(
+            controller: _oldPasswordController,
+            obscureText: true,
+            decoration: const InputDecoration(
+              labelText: '現在のパスワード',
+              prefixIcon: Icon(Icons.password_rounded),
+            ),
+          ),
+          const SizedBox(height: 10),
           _ResponsiveFieldRow(
             wide: wide,
             children: [
@@ -3665,10 +3880,9 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
         return [
           TextField(
             controller: _basicInfoController,
-            minLines: 5,
-            maxLines: 8,
+            maxLines: 1,
             decoration: const InputDecoration(
-              labelText: '基本情報',
+              labelText: 'プログラミング言語',
               prefixIcon: Icon(Icons.badge_outlined),
             ),
           ),

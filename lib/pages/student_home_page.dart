@@ -27,6 +27,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
   int? _chatConversationId;
   int? _examAttemptId;
   int? _loadedExamId;
+  ExamResult? _examResult;
   bool _loading = false;
   String? _apiError;
   final List<double> _videoProgress = [];
@@ -75,7 +76,12 @@ class _StudentHomePageState extends State<StudentHomePage> {
       activeIndex: StudentSection.values.indexOf(_section),
       items: _studentMenu,
       onSelect: (index) {
-        setState(() => _section = StudentSection.values[index]);
+        final section = StudentSection.values[index];
+        setState(() => _section = section);
+        if (section == StudentSection.askTeacher &&
+            _teacherContacts.isNotEmpty) {
+          unawaited(_selectTeacherContact(_teacherContacts.first));
+        }
       },
       onLogout: _logout,
       middle: _studentMiddlePanel(context),
@@ -103,7 +109,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
                 title: topic.title,
                 subtitle: topic.category,
                 detail: topic.question,
-                trailing: '名前変更',
                 onTap: () => _loadAiTopic(topic),
               ),
           ],
@@ -175,25 +180,38 @@ class _StudentHomePageState extends State<StudentHomePage> {
                   detail: _videos[i].description,
                   onTap: () => setState(() => _selectedLesson = i),
                 ),
-            if (_learningMode != LearningMode.video &&
+            if (_learningMode == LearningMode.document &&
                 _lessonsForLearning.isEmpty)
               const _InlineNotice(
                 tone: _NoticeTone.warning,
                 title: '教材データがありません',
                 message: 'バックエンドから文書教材が返っていません。',
               ),
-            if (_learningMode != LearningMode.video)
+            if (_learningMode == LearningMode.document)
               for (var i = 0; i < _lessonsForLearning.length; i++)
                 _CompactListCard(
                   selected: _selectedLesson == i,
                   title: _lessonsForLearning[i].title,
-                  subtitle: _learningMode == LearningMode.document
-                      ? _lessonsForLearning[i].level
-                      : '${_lessonsForLearning[i].sections.length}小分類 · 各3問',
-                  detail: _learningMode == LearningMode.document
-                      ? _lessonsForLearning[i].summary
-                      : '問題バンク：${_lessonsForLearning[i].sections.map((e) => e.heading).join(' / ')}',
+                  subtitle: _lessonsForLearning[i].level,
+                  detail: _lessonsForLearning[i].summary,
                   onTap: () => setState(() => _selectedLesson = i),
+                ),
+            if (_learningMode == LearningMode.questionBank && _apiExams.isEmpty)
+              const _InlineNotice(
+                tone: _NoticeTone.warning,
+                title: '問題データがありません',
+                message: 'バックエンドから公開済みテストが返っていません。',
+              ),
+            if (_learningMode == LearningMode.questionBank)
+              for (var i = 0; i < _apiExams.length; i++)
+                _CompactListCard(
+                  selected: _selectedExamLesson == i,
+                  title: _apiExams[i].title,
+                  subtitle: _apiExams[i].latestScore == null
+                      ? (_apiExams[i].isAvailable ? '受験可能' : '受付終了')
+                      : '最新 ${_apiExams[i].latestScore}点',
+                  detail: _apiExams[i].description,
+                  onTap: () => setState(() => _selectedExamLesson = i),
                 ),
           ],
         );
@@ -208,12 +226,14 @@ class _StudentHomePageState extends State<StudentHomePage> {
                   selected: _selectedExamLesson == i,
                   title: _apiExams[i].title,
                   subtitle: _apiExams[i].latestScore == null
-                      ? '未開始'
+                      ? (_apiExams[i].isAvailable ? '受験可能' : '受付終了')
                       : '最新 ${_apiExams[i].latestScore}点',
                   detail: _apiExams[i].description,
                   onTap: () {
                     setState(() => _selectedExamLesson = i);
-                    unawaited(_loadSelectedExam());
+                    if (_apiExams[i].isAvailable) {
+                      unawaited(_loadSelectedExam());
+                    }
                   },
                 ),
             ],
@@ -310,7 +330,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
         );
       case StudentSection.learning:
         final lessons = _lessonsForLearning;
-        if (_learningMode != LearningMode.video && lessons.isEmpty) {
+        if (_learningMode == LearningMode.document && lessons.isEmpty) {
           return const Center(
             child: _InlineNotice(
               tone: _NoticeTone.warning,
@@ -323,26 +343,24 @@ class _StudentHomePageState extends State<StudentHomePage> {
             ? 0
             : _selectedLesson.clamp(0, lessons.length - 1);
         return _LearningWorkspace(
-          lesson: _learningMode == LearningMode.video
+          lesson: _learningMode != LearningMode.document
               ? _emptyLesson()
               : lessons[selectedLesson],
           videos: _videos,
           videoProgress: _videoProgress,
           onVideoProgressChanged: (index, progress) {
             setState(() => _videoProgress[index] = progress);
-            final video = _videos[index];
-            if (video.id != null) {
-              unawaited(
-                ItClassApi.instance.saveVideoProgress(
-                  courseVideoId: video.id!,
-                  positionSeconds: 0,
-                  durationSeconds: 0,
-                  ended: progress >= 1,
-                ),
-              );
-            }
           },
+          onVideoPositionSaved: _saveVideoProgress,
           mode: _learningMode,
+          exams: _apiExams,
+          onOpenExam: (index) {
+            setState(() {
+              _selectedExamLesson = index;
+              _section = StudentSection.exam;
+            });
+            unawaited(_loadSelectedExam());
+          },
         );
       case StudentSection.exam:
         final usingApi = _apiExams.isNotEmpty;
@@ -355,12 +373,22 @@ class _StudentHomePageState extends State<StudentHomePage> {
             ),
           );
         }
+        final selectedExam = _apiExams[_selectedExamLesson];
+        if (!selectedExam.isAvailable) {
+          return const Center(
+            child: _InlineNotice(
+              tone: _NoticeTone.warning,
+              title: '現在受験できません',
+              message: 'このテストの公開期間は終了しています。',
+            ),
+          );
+        }
         if (usingApi &&
             (_loading || _loadedExamId != _apiExams[_selectedExamLesson].id)) {
           unawaited(_loadSelectedExam());
           return const Center(child: CircularProgressIndicator());
         }
-        final lesson = _lessonFromExam(_apiExams[_selectedExamLesson]);
+        final lesson = _lessonFromExam(selectedExam);
         final questions = _apiExamQuestions;
         return _ExamWorkspace(
           lesson: lesson,
@@ -377,6 +405,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
               ))
                 i,
           },
+          result: _examResult,
           onSelect: (questionIndex, answerIndex) => setState(() {
             _examAnswers[_examKey(_selectedExamLesson, questionIndex)] =
                 answerIndex;
@@ -404,12 +433,12 @@ class _StudentHomePageState extends State<StudentHomePage> {
       case StudentSection.settings:
         return _ProfileSettingsWorkspace(
           roleTitle: '学生設定',
-          roleSubtitle: '名前、パスワード、アイコン、連絡先、メール、基本情報を変更できます。',
+          roleSubtitle: 'プロフィール、アイコン、連絡先、パスワードをバックエンドに保存します。',
           initialName: ItClassSession.current?.realName ?? '',
           initialEmail: ItClassSession.current?.email ?? '',
           initialPhone: ItClassSession.current?.mobile ?? '',
           initialAvatar: '',
-          initialBasicInfo: '',
+          initialBasicInfo: ItClassSession.current?.programmingLanguage ?? '',
           section: _settingSection,
         );
     }
@@ -501,10 +530,13 @@ class _StudentHomePageState extends State<StudentHomePage> {
   }
 
   String? get _examProgressLabel {
+    if (_examResult != null) {
+      return '結果 ${_examResult!.totalScore.round()}点';
+    }
     final questions = _apiExamQuestions;
     final submitted = _submittedCount(_selectedExamLesson, questions.length);
     if (submitted == 0) return null;
-    return '回答 $submitted/${questions.length} · ${_examScore(_selectedExamLesson, questions)}点';
+    return '回答 $submitted/${questions.length}';
   }
 
   int _submittedCount(int lessonIndex, int total) {
@@ -517,25 +549,11 @@ class _StudentHomePageState extends State<StudentHomePage> {
     return count;
   }
 
-  int _examScore(int lessonIndex, List<ExamQuestion> questions) {
-    if (questions.isEmpty) return 0;
-    var correct = 0;
-    for (var i = 0; i < questions.length; i++) {
-      final key = _examKey(lessonIndex, i);
-      if (_submittedExamQuestions.contains(key) &&
-          _examAnswers[key] == questions[i].answerIndex) {
-        correct++;
-      }
-    }
-    return ((correct / questions.length) * 100).round();
-  }
-
   void _submitExam(int questionIndex, List<ExamQuestion> questions) {
     final answer = _examAnswers[_examKey(_selectedExamLesson, questionIndex)];
     if (answer == null) return;
 
     final current = questions[questionIndex];
-    final correct = answer == current.answerIndex;
     setState(() {
       _submittedExamQuestions.add(_examKey(_selectedExamLesson, questionIndex));
     });
@@ -547,13 +565,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
     }
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          correct
-              ? '正解です：${current.explanation}'
-              : 'もう少しです：${current.explanation}',
-        ),
-      ),
+      const SnackBar(content: Text('回答を保存しました。全問回答後に採点結果を表示します。')),
     );
   }
 
@@ -580,6 +592,9 @@ class _StudentHomePageState extends State<StudentHomePage> {
                 i: _examAnswers[_examKey(_selectedExamLesson, i)]!,
           },
         );
+        final result = await ItClassApi.instance.examResult(_examAttemptId!);
+        if (!mounted) return;
+        setState(() => _examResult = result);
       }
     } catch (error) {
       if (!mounted) return;
@@ -631,9 +646,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
           _selectedChatStudent = _teacherContacts.first.name;
         }
       });
-      if (_apiExams.isNotEmpty) {
-        await _loadSelectedExam();
-      }
     } catch (error) {
       if (!mounted) return;
       setState(() => _apiError = 'APIデータ取得に失敗しました：$error');
@@ -645,6 +657,10 @@ class _StudentHomePageState extends State<StudentHomePage> {
   Future<void> _loadSelectedExam() async {
     if (_apiExams.isEmpty) return;
     final exam = _apiExams[_selectedExamLesson];
+    if (!exam.isAvailable) {
+      setState(() => _apiError = 'このテストは現在受験できません。');
+      return;
+    }
     if (_loadedExamId == exam.id && _apiExamQuestions.isNotEmpty) return;
     setState(() => _loading = true);
     try {
@@ -654,6 +670,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
         _examAttemptId = attempt.attemptId;
         _loadedExamId = exam.id;
         _apiExamQuestions = attempt.questions;
+        _examResult = null;
       });
     } catch (error) {
       if (!mounted) return;
@@ -661,6 +678,22 @@ class _StudentHomePageState extends State<StudentHomePage> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _saveVideoProgress(
+    int index,
+    int positionSeconds,
+    int durationSeconds,
+    bool ended,
+  ) async {
+    final video = _videos[index];
+    if (video.id == null) return;
+    await ItClassApi.instance.saveVideoProgress(
+      courseVideoId: video.id!,
+      positionSeconds: positionSeconds,
+      durationSeconds: durationSeconds,
+      ended: ended,
+    );
   }
 
   Future<void> _logout() async {

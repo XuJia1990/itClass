@@ -281,7 +281,7 @@ class StudentLoginPage extends StatelessWidget {
       subtitle: '授業動画、文書学習、問題演習、テスト、先生への質問を利用できます。',
       icon: Icons.person_rounded,
       color: _AppPalette.teal,
-      defaultAccountNo: 'TWS2026001',
+      defaultAccountNo: '',
       expectedAccountType: schoolAccountTypeStudent,
       destination: const StudentHomePage(),
     );
@@ -298,7 +298,7 @@ class TeacherLoginPage extends StatelessWidget {
       subtitle: '授業動画、PDF、テストアップロード、成績確認、ユーザー管理を利用できます。',
       icon: Icons.admin_panel_settings_rounded,
       color: _AppPalette.sky,
-      defaultAccountNo: 'TWD2026001',
+      defaultAccountNo: '',
       expectedAccountType: schoolAccountTypeTeacher,
       destination: const TeacherHomePage(),
     );
@@ -330,7 +330,7 @@ class _RoleAuthPage extends StatefulWidget {
 
 class _RoleAuthPageState extends State<_RoleAuthPage> {
   late final TextEditingController _idController;
-  final _passwordController = TextEditingController(text: 'password');
+  final _passwordController = TextEditingController();
   bool _loggingIn = false;
 
   @override

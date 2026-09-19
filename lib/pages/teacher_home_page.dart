@@ -18,6 +18,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   final _replyInput = TextEditingController();
   List<SchoolClassroom> _classrooms = const [];
   List<StudentProfile> _studentsFromApi = const [];
+  List<StudentProfile> _allStudentsFromApi = const [];
   List<CodeReviewItem> _codeReviewsFromApi = const [];
   bool _loading = false;
   String? _apiError;
@@ -116,10 +117,11 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           title: '管理メニュー',
           children: [
             _CompactListCard(
+              selected: true,
               title: '成績確認',
               subtitle: '${_teacherCodeReviews.length}件',
               detail: 'バックエンドの提出履歴から採点状況を表示します。',
-              onTap: () {},
+              onTap: () => unawaited(_loadTeacherData()),
             ),
             _CompactListCard(
               title: '学習資料アップロード',
@@ -155,7 +157,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
               selected: _systemSection == SystemManagementSection.allStudents,
               title: '全学生',
               subtitle: 'アカウント一覧',
-              detail: '全学生のメール、連絡先、初期パスワードを確認します。',
+              detail: '全学生のアカウント、メール、連絡先を確認します。',
               onTap: () => setState(
                 () => _systemSection = SystemManagementSection.allStudents,
               ),
@@ -217,7 +219,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         return _TeacherRequestWorkspace(
           request: _requests[_selectedRequest.clamp(0, _requests.length - 1)],
           controller: _replyInput,
-          onSubmit: _answerRequest,
+          onSubmit: () => unawaited(_answerRequest()),
         );
       case TeacherSection.codeScoring:
         if (_loading && _codeReviewsFromApi.isEmpty) {
@@ -253,50 +255,46 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         return _UserRoleManagementWorkspace(
           section: _systemSection,
           classrooms: _classrooms,
-          initialStudents: _teacherStudents,
+          assignedStudents: _teacherStudents,
+          allStudents: _allStudentsFromApi,
         );
       case TeacherSection.settings:
         return _ProfileSettingsWorkspace(
           roleTitle: '先生設定',
-          roleSubtitle: '名前、パスワード、アイコン、連絡先、メール、基本情報を変更できます。',
+          roleSubtitle: 'プロフィール、アイコン、連絡先、パスワードをバックエンドに保存します。',
           initialName: ItClassSession.current?.realName ?? '',
           initialEmail: ItClassSession.current?.email ?? '',
           initialPhone: ItClassSession.current?.mobile ?? '',
           initialAvatar: '',
-          initialBasicInfo: '',
+          initialBasicInfo: ItClassSession.current?.programmingLanguage ?? '',
           section: _settingSection,
         );
     }
   }
 
-  void _answerRequest() {
+  Future<void> _answerRequest() async {
     final text = _replyInput.text.trim();
     if (text.isEmpty) return;
     final request = _requests[_selectedRequest];
-
-    setState(() {
-      _requests[_selectedRequest] = request.copyWith(
-        answered: true,
-        teacherAnswer: text,
-      );
-      _replyInput.clear();
-    });
-
-    if (request.questionId != null) {
-      unawaited(_replyAiQuestion(request.questionId!, text));
-    }
-
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('学生へ送信し、AI再学習資料として保存しました。')));
-  }
-
-  Future<void> _replyAiQuestion(int questionId, String text) async {
     try {
+      if (request.questionId == null) {
+        throw const ApiException('質問IDがありません。');
+      }
       await ItClassApi.instance.replyAiQuestion(
-        questionId: questionId,
+        questionId: request.questionId!,
         answer: text,
       );
+      if (!mounted) return;
+      setState(() {
+        _requests[_selectedRequest] = request.copyWith(
+          answered: true,
+          teacherAnswer: text,
+        );
+        _replyInput.clear();
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('学生への回答をバックエンドに保存しました。')));
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -328,7 +326,8 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           ..clear()
           ..addAll(questions.list);
         _selectedRequest = 0;
-        _studentsFromApi = contacts.isNotEmpty ? contacts : students;
+        _studentsFromApi = contacts;
+        _allStudentsFromApi = students;
         _codeReviewsFromApi = codeReviews.list;
         _selectedStudent = 0;
       });

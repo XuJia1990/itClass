@@ -53,6 +53,8 @@ class Lesson {
     required this.sections,
     required this.exercise,
     required this.aiSummary,
+    this.documentUrl = '',
+    this.fileName = '',
   });
 
   final int? id;
@@ -65,6 +67,8 @@ class Lesson {
   final List<LessonSection> sections;
   final LessonExercise exercise;
   final String aiSummary;
+  final String documentUrl;
+  final String fileName;
 }
 
 class LessonSection {
@@ -107,6 +111,8 @@ class LearningVideo {
     required this.progress,
     required this.description,
     required this.videoUrl,
+    this.durationSeconds = 0,
+    this.lastPositionSeconds = 0,
   });
 
   final int? id;
@@ -117,6 +123,70 @@ class LearningVideo {
   final double progress;
   final String description;
   final String videoUrl;
+  final int durationSeconds;
+  final int lastPositionSeconds;
+}
+
+class ExamResult {
+  const ExamResult({
+    required this.attemptId,
+    required this.totalScore,
+    required this.paperTotalScore,
+    required this.passed,
+    required this.answersVisible,
+    required this.answers,
+  });
+
+  final int attemptId;
+  final double totalScore;
+  final double paperTotalScore;
+  final bool? passed;
+  final bool answersVisible;
+  final List<ExamAnswerResult> answers;
+
+  ExamAnswerResult? answerFor(int? paperQuestionId) {
+    if (paperQuestionId == null) return null;
+    for (final answer in answers) {
+      if (answer.paperQuestionId == paperQuestionId) return answer;
+    }
+    return null;
+  }
+}
+
+class ExamAnswerResult {
+  const ExamAnswerResult({
+    required this.paperQuestionId,
+    required this.answerContent,
+    required this.referenceAnswer,
+    required this.analysis,
+    required this.score,
+    required this.correct,
+  });
+
+  final int paperQuestionId;
+  final String answerContent;
+  final String referenceAnswer;
+  final String analysis;
+  final double score;
+  final bool? correct;
+}
+
+class MemberProfile {
+  const MemberProfile({
+    required this.realName,
+    required this.nickname,
+    required this.avatar,
+    required this.mobile,
+    required this.email,
+    required this.programmingLanguage,
+  });
+
+  final String realName;
+  final String nickname;
+  final String avatar;
+  final String mobile;
+  final String email;
+  final String programmingLanguage;
 }
 
 class ExamQuestion {
@@ -252,7 +322,6 @@ class StudentProfile {
     this.classroomId,
     this.accountNo,
     required this.email,
-    required this.password,
     required this.phone,
   });
 
@@ -263,7 +332,6 @@ class StudentProfile {
   final String status;
   final String lastQuestion;
   final String email;
-  final String password;
   final String phone;
 }
 

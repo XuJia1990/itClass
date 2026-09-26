@@ -18,24 +18,6 @@ const _teacherMenu = [
   MenuItem(Icons.settings_rounded, '設定', Color(0xFF475569)),
 ];
 
-const _defaultCode = '''
-import java.util.*;
-
-class Solution {
-  public int[] twoSum(int[] nums, int target) {
-    Map<Integer, Integer> indexByValue = new HashMap<>();
-    for (int i = 0; i < nums.length; i++) {
-      int need = target - nums[i];
-      if (indexByValue.containsKey(need)) {
-        return new int[] { indexByValue.get(need), i };
-      }
-      indexByValue.put(nums[i], i);
-    }
-    return new int[] {};
-  }
-}
-''';
-
 String _teacherTitle(TeacherSection section) {
   switch (section) {
     case TeacherSection.pendingAi:

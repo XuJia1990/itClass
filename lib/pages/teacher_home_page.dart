@@ -46,7 +46,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     return _ResponsiveShell(
       title: _teacherTitle(_section),
       subtitle: '先生画面：質問対応、成績確認、学習資料管理、ユーザー管理',
-      profileName: '${ItClassSession.current?.realName ?? ''}（先生）',
+      profileName: '${ItClassSession.current?.displayName ?? ''}（先生）',
       profileRole: '先生',
       activeIndex: TeacherSection.values.indexOf(_section),
       items: _teacherMenu,
@@ -257,17 +257,22 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           classrooms: _classrooms,
           assignedStudents: _teacherStudents,
           allStudents: _allStudentsFromApi,
+          onChanged: _loadTeacherData,
         );
       case TeacherSection.settings:
         return _ProfileSettingsWorkspace(
           roleTitle: '先生設定',
           roleSubtitle: 'プロフィール、アイコン、連絡先、パスワードをバックエンドに保存します。',
-          initialName: ItClassSession.current?.realName ?? '',
+          initialRealName: ItClassSession.current?.realName ?? '',
+          initialNickname: ItClassSession.current?.nickname ?? '',
           initialEmail: ItClassSession.current?.email ?? '',
           initialPhone: ItClassSession.current?.mobile ?? '',
-          initialAvatar: '',
+          initialAvatar: ItClassSession.current?.avatar ?? '',
           initialBasicInfo: ItClassSession.current?.programmingLanguage ?? '',
           section: _settingSection,
+          onProfileChanged: (profile) {
+            setState(() => ItClassSession.updateProfile(profile));
+          },
         );
     }
   }

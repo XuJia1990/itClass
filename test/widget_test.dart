@@ -3,6 +3,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:it_class/main.dart';
 
 void main() {
+  test('chat websocket URL uses the server root without a fragment', () {
+    final uri = SchoolChatRealtime.webSocketUri('secret-token');
+
+    expect(uri.scheme, anyOf('ws', 'wss'));
+    expect(uri.path, '/infra/ws');
+    expect(uri.queryParameters['token'], 'secret-token');
+    expect(uri.toString(), isNot(contains('#')));
+    expect(uri.path, isNot(contains('/app-api/')));
+  });
+
   AuthSession fakeSession(int accountType) {
     return AuthSession(
       userId: accountType,
@@ -11,6 +21,8 @@ void main() {
       schoolAccountId: accountType,
       schoolAccountType: accountType,
       realName: accountType == schoolAccountTypeTeacher ? 'Admin' : '佐藤',
+      nickname: accountType == schoolAccountTypeTeacher ? '先生A' : '学生A',
+      avatar: '',
       email: accountType == schoolAccountTypeTeacher
           ? 'teacher@example.com'
           : 'student@example.com',
@@ -18,6 +30,24 @@ void main() {
       programmingLanguage: 'Java',
     );
   }
+
+  test('profile updates replace session display fields', () {
+    ItClassSession.current = fakeSession(schoolAccountTypeStudent);
+    ItClassSession.updateProfile(
+      const MemberProfile(
+        realName: '佐藤',
+        nickname: 'joke',
+        avatar: 'https://example.com/avatar.png',
+        mobile: '09012345678',
+        email: 'joke@example.com',
+        programmingLanguage: 'Python',
+      ),
+    );
+
+    expect(ItClassSession.current?.displayName, 'joke');
+    expect(ItClassSession.current?.email, 'joke@example.com');
+    expect(ItClassSession.current?.programmingLanguage, 'Python');
+  });
 
   void useDesktopViewport(WidgetTester tester) {
     tester.view.physicalSize = const Size(1280, 900);

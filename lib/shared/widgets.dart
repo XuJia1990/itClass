@@ -510,43 +510,6 @@ class _ContentFrame extends StatelessWidget {
   }
 }
 
-class _SubjectSelector extends StatelessWidget {
-  const _SubjectSelector({
-    required this.value,
-    required this.values,
-    required this.onChanged,
-  });
-
-  final String value;
-  final List<String> values;
-  final ValueChanged<String?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: _AppPalette.washBlue,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: _AppPalette.line),
-        ),
-        child: DropdownButton<String>(
-          value: value,
-          underline: const SizedBox.shrink(),
-          icon: const Icon(Icons.keyboard_arrow_down_rounded),
-          items: [
-            for (final item in values)
-              DropdownMenuItem<String>(value: item, child: Text(item)),
-          ],
-          onChanged: onChanged,
-        ),
-      ),
-    );
-  }
-}
-
 class _ChatWorkspace extends StatelessWidget {
   const _ChatWorkspace({
     required this.title,
@@ -651,41 +614,6 @@ class _MessageBubble extends StatelessWidget {
           border: Border.all(color: _AppPalette.line),
         ),
         child: Text(message.text, style: const TextStyle(height: 1.5)),
-      ),
-    );
-  }
-}
-
-class _WorkspaceControlBar extends StatelessWidget {
-  const _WorkspaceControlBar({
-    required this.label,
-    required this.value,
-    required this.values,
-    required this.onChanged,
-  });
-
-  final String label;
-  final String value;
-  final List<String> values;
-  final ValueChanged<String?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: _AppPalette.line),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.tune_rounded, color: _AppPalette.teal),
-          const SizedBox(width: 10),
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w900)),
-          const Spacer(),
-          _SubjectSelector(value: value, values: values, onChanged: onChanged),
-        ],
       ),
     );
   }
@@ -1064,8 +992,6 @@ class _LearningWorkspace extends StatefulWidget {
 }
 
 class _LearningWorkspaceState extends State<_LearningWorkspace> {
-  String _subject = 'Java基礎';
-
   @override
   Widget build(BuildContext context) {
     final lesson = widget.lesson;
@@ -1086,15 +1012,6 @@ class _LearningWorkspaceState extends State<_LearningWorkspace> {
             onOpenExam: widget.onOpenExam,
           )
         else ...[
-          _WorkspaceControlBar(
-            label: '学習言語',
-            value: _subject,
-            values: const ['Java基礎', 'Java文法', 'Web API'],
-            onChanged: (value) {
-              if (value != null) setState(() => _subject = value);
-            },
-          ),
-          const SizedBox(height: 14),
           _SectionHeader(
             icon: Icons.menu_book_rounded,
             title: lesson.title,
@@ -2099,12 +2016,16 @@ class _TeacherChatWorkspace extends StatefulWidget {
 class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
   final _controller = TextEditingController();
   final List<ChatMessage> _messages = [];
+  StreamSubscription<ChatMessage>? _chatMessageSubscription;
   int? _conversationId;
   bool _loading = false;
 
   @override
   void initState() {
     super.initState();
+    _chatMessageSubscription = SchoolChatRealtime.instance.messages.listen(
+      _handleRealtimeMessage,
+    );
     unawaited(_loadConversation());
   }
 
@@ -2120,6 +2041,7 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
 
   @override
   void dispose() {
+    unawaited(_chatMessageSubscription?.cancel());
     _controller.dispose();
     super.dispose();
   }
@@ -2190,7 +2112,7 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
       );
       if (!mounted) return;
       setState(() {
-        _messages.add(message);
+        _upsertMessage(message);
         _controller.clear();
       });
     } catch (error) {
@@ -2221,6 +2143,7 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
         _conversationId = conversationId;
         _messages.addAll(messages);
       });
+      _markLatestStudentMessageRead(messages);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -2229,6 +2152,51 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  void _handleRealtimeMessage(ChatMessage message) {
+    if (!mounted || message.conversationId != _conversationId) return;
+    setState(() => _upsertMessage(message));
+    if (message.author == MessageAuthor.student && message.id != null) {
+      unawaited(
+        ItClassApi.instance.readChatMessages(
+          conversationId: message.conversationId!,
+          messageId: message.id!,
+        ),
+      );
+    }
+  }
+
+  void _upsertMessage(ChatMessage message) {
+    final id = message.id;
+    final index = id == null
+        ? -1
+        : _messages.indexWhere((item) => item.id == id);
+    if (index >= 0) {
+      _messages[index] = message;
+    } else {
+      _messages.add(message);
+    }
+  }
+
+  void _markLatestStudentMessageRead(List<ChatMessage> messages) {
+    final conversationId = _conversationId;
+    final incoming = messages
+        .where(
+          (message) =>
+              message.author == MessageAuthor.student && message.id != null,
+        )
+        .toList();
+    if (conversationId == null || incoming.isEmpty) return;
+    final latestId = incoming
+        .map((message) => message.id!)
+        .reduce((left, right) => left > right ? left : right);
+    unawaited(
+      ItClassApi.instance.readChatMessages(
+        conversationId: conversationId,
+        messageId: latestId,
+      ),
+    );
   }
 }
 
@@ -2247,8 +2215,8 @@ class _LearningUploadWorkspace extends StatefulWidget {
 }
 
 class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
-  final _testTitleController = TextEditingController(text: 'Java基礎確認テスト');
-  final _testCategoryController = TextEditingController(text: 'Java入門');
+  final _testTitleController = TextEditingController();
+  final _testCategoryController = TextEditingController();
   int _selectedTestLesson = 0;
   int _questionCount = 3;
   List<ExamQuestion> _draftQuestions = const [];
@@ -2350,7 +2318,9 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
             generating: _generatingQuestions,
             onLessonChanged: (index) => setState(() {
               _selectedTestLesson = index;
-              _testCategoryController.text = _availableLessons[index].level;
+              final lesson = _availableLessons[index];
+              _testTitleController.text = '${lesson.title} テスト';
+              _testCategoryController.text = lesson.level;
             }),
             onQuestionCountChanged: (count) =>
                 setState(() => _questionCount = count),
@@ -2392,7 +2362,9 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
         _availableLessons = docs.list;
         _selectedTestLesson = 0;
         if (_availableLessons.isNotEmpty) {
-          _testCategoryController.text = _availableLessons.first.level;
+          final lesson = _availableLessons.first;
+          _testTitleController.text = '${lesson.title} テスト';
+          _testCategoryController.text = lesson.level;
         }
       });
     } catch (error) {
@@ -2439,11 +2411,11 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
       _draftQuestions = [
         ..._draftQuestions,
         const ExamQuestion(
-          topic: '先生追加問題',
-          question: 'ここに先生が追加したい選択問題を入力してください。',
-          options: ['選択肢A', '選択肢B', '選択肢C', '選択肢D'],
+          topic: '',
+          question: '',
+          options: ['', '', '', ''],
           answerIndex: 0,
-          explanation: '模範解答と解説を入力します。',
+          explanation: '',
         ),
       ];
     });
@@ -2489,12 +2461,40 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
       ).showSnackBar(const SnackBar(content: Text('担当クラスがありません。')));
       return;
     }
+    final title = _testTitleController.text.trim();
+    if (title.isEmpty ||
+        _draftQuestions.any(
+          (question) =>
+              question.question.trim().isEmpty ||
+              question.options.length < 2 ||
+              question.options.any((option) => option.trim().isEmpty),
+        )) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('テスト名、問題文、すべての選択肢を入力してください。')),
+      );
+      return;
+    }
+    if (_availableLessons.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('先にバックエンドへ教材を登録してください。')));
+      return;
+    }
     try {
+      final lesson =
+          _availableLessons[_selectedTestLesson.clamp(
+            0,
+            _availableLessons.length - 1,
+          )];
       final questionIds = <int>[];
       for (final question in _draftQuestions) {
-        questionIds.add(await ItClassApi.instance.createQuestion(question));
+        questionIds.add(
+          await ItClassApi.instance.createQuestion(
+            question,
+            programmingLanguage: lesson.level,
+          ),
+        );
       }
-      final title = _testTitleController.text.trim();
       final paperId = await ItClassApi.instance.createPaper(
         title: title,
         description: _testCategoryController.text.trim(),
@@ -3061,12 +3061,14 @@ class _UserRoleManagementWorkspace extends StatefulWidget {
     required this.classrooms,
     required this.assignedStudents,
     required this.allStudents,
+    required this.onChanged,
   });
 
   final SystemManagementSection section;
   final List<SchoolClassroom> classrooms;
   final List<StudentProfile> assignedStudents;
   final List<StudentProfile> allStudents;
+  final Future<void> Function() onChanged;
 
   @override
   State<_UserRoleManagementWorkspace> createState() =>
@@ -3102,6 +3104,26 @@ class _UserRoleManagementWorkspaceState
     _existingStudentId = _availableStudents.isEmpty
         ? null
         : _availableStudents.first.accountId;
+  }
+
+  @override
+  void didUpdateWidget(covariant _UserRoleManagementWorkspace oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.allStudents != widget.allStudents ||
+        oldWidget.assignedStudents != widget.assignedStudents) {
+      _managedStudents = List.of(widget.allStudents);
+      _assignedStudentIds = widget.assignedStudents
+          .map((student) => student.accountId)
+          .whereType<int>()
+          .toSet();
+      if (!_availableStudents.any(
+        (student) => student.accountId == _existingStudentId,
+      )) {
+        _existingStudentId = _availableStudents.isEmpty
+            ? null
+            : _availableStudents.first.accountId;
+      }
+    }
   }
 
   @override
@@ -3309,6 +3331,7 @@ class _UserRoleManagementWorkspaceState
       if (widget.classrooms.isNotEmpty) {
         final student = await ItClassApi.instance.createStudent(
           classroomId: widget.classrooms.first.id,
+          programmingLanguage: widget.classrooms.first.programmingLanguage,
           realName: name,
           username: email,
           password: password,
@@ -3321,6 +3344,8 @@ class _UserRoleManagementWorkspaceState
             _assignedStudentIds.add(student.accountId!);
           }
         });
+        await widget.onChanged();
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('学生アカウント ${student.accountNo ?? ''} を作成しました。'),
@@ -3363,6 +3388,8 @@ class _UserRoleManagementWorkspaceState
             ? null
             : _availableStudents.first.accountId;
       });
+      await widget.onChanged();
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('${existing.name} を追加しました。')));
@@ -3460,22 +3487,26 @@ class _ProfileSettingsWorkspace extends StatefulWidget {
   const _ProfileSettingsWorkspace({
     required this.roleTitle,
     required this.roleSubtitle,
-    required this.initialName,
+    required this.initialRealName,
+    required this.initialNickname,
     required this.initialEmail,
     required this.initialPhone,
     required this.initialAvatar,
     required this.initialBasicInfo,
     required this.section,
+    required this.onProfileChanged,
   });
 
   final String roleTitle;
   final String roleSubtitle;
-  final String initialName;
+  final String initialRealName;
+  final String initialNickname;
   final String initialEmail;
   final String initialPhone;
   final String initialAvatar;
   final String initialBasicInfo;
   final ProfileSettingSection section;
+  final ValueChanged<MemberProfile> onProfileChanged;
 
   @override
   State<_ProfileSettingsWorkspace> createState() =>
@@ -3495,21 +3526,27 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
   late String _savedEmail;
   late String _savedPhone;
   late String _savedAvatar;
+  late String _savedRealName;
+  late String _savedBasicInfo;
   bool _loadingProfile = false;
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.initialName);
+    _nameController = TextEditingController(text: widget.initialNickname);
     _avatarController = TextEditingController(text: widget.initialAvatar);
     _phoneController = TextEditingController(text: widget.initialPhone);
     _emailController = TextEditingController(text: widget.initialEmail);
     _basicInfoController = TextEditingController(text: widget.initialBasicInfo);
-    _savedName = widget.initialName;
+    _savedName = widget.initialNickname.trim().isEmpty
+        ? widget.initialRealName
+        : widget.initialNickname;
     _savedEmail = widget.initialEmail;
     _savedPhone = widget.initialPhone;
     _savedAvatar = widget.initialAvatar;
+    _savedRealName = widget.initialRealName;
+    _savedBasicInfo = widget.initialBasicInfo;
     unawaited(_loadProfile());
   }
 
@@ -3680,30 +3717,29 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
           newPassword: _passwordController.text,
         );
       } else {
-        await ItClassApi.instance.updateProfile(
-          realName: widget.initialName,
+        final profile = await ItClassApi.instance.updateProfile(
+          realName: _savedRealName,
           nickname: _nameController.text.trim(),
           email: _emailController.text.trim(),
           avatar: _avatarController.text.trim(),
           mobile: _phoneController.text.trim(),
           programmingLanguage: _basicInfoController.text.trim(),
         );
+        if (!mounted) return;
+        _applyProfile(profile);
       }
       if (!mounted) return;
       setState(() {
-        _savedName = _nameController.text.trim().isEmpty
-            ? widget.roleTitle
-            : _nameController.text.trim();
-        _savedEmail = _emailController.text.trim();
-        _savedPhone = _phoneController.text.trim();
-        _savedAvatar = _avatarController.text.trim();
         _passwordController.clear();
         _confirmPasswordController.clear();
         _oldPasswordController.clear();
       });
+      final message = widget.section == ProfileSettingSection.password
+          ? 'パスワードを変更しました。'
+          : 'プロフィールを保存しました。';
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('プロフィールを保存しました。')));
+      ).showSnackBar(SnackBar(content: Text(message)));
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -3719,19 +3755,7 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
     try {
       final profile = await ItClassApi.instance.getCurrentUser();
       if (!mounted) return;
-      setState(() {
-        _nameController.text = profile.nickname.isEmpty
-            ? widget.initialName
-            : profile.nickname;
-        _emailController.text = profile.email;
-        _phoneController.text = profile.mobile;
-        _avatarController.text = profile.avatar;
-        _savedName = _nameController.text;
-        _savedEmail = profile.email;
-        _savedPhone = profile.mobile;
-        _savedAvatar = profile.avatar;
-        _basicInfoController.text = profile.programmingLanguage;
-      });
+      _applyProfile(profile);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -3751,8 +3775,27 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
       _oldPasswordController.clear();
       _avatarController.text = _savedAvatar;
       _phoneController.text = _savedPhone;
-      _basicInfoController.text = widget.initialBasicInfo;
+      _basicInfoController.text = _savedBasicInfo;
     });
+  }
+
+  void _applyProfile(MemberProfile profile) {
+    setState(() {
+      _savedRealName = profile.realName;
+      _nameController.text = profile.nickname;
+      _emailController.text = profile.email;
+      _phoneController.text = profile.mobile;
+      _avatarController.text = profile.avatar;
+      _basicInfoController.text = profile.programmingLanguage;
+      _savedName = profile.nickname.trim().isEmpty
+          ? profile.realName
+          : profile.nickname;
+      _savedEmail = profile.email;
+      _savedPhone = profile.mobile;
+      _savedAvatar = profile.avatar;
+      _savedBasicInfo = profile.programmingLanguage;
+    });
+    widget.onProfileChanged(profile);
   }
 
   List<Widget> _profileSectionFields(bool wide) {

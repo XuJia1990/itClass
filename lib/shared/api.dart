@@ -15,7 +15,12 @@ class ItClassSession {
   static bool get isSignedIn => current != null;
 
   static void clear() {
+    SchoolChatRealtime.instance.disconnect();
     current = null;
+  }
+
+  static void updateProfile(MemberProfile profile) {
+    current = current?.copyWithProfile(profile);
   }
 }
 
@@ -27,6 +32,8 @@ class AuthSession {
     required this.schoolAccountId,
     required this.schoolAccountType,
     required this.realName,
+    required this.nickname,
+    required this.avatar,
     required this.email,
     required this.mobile,
     required this.programmingLanguage,
@@ -42,6 +49,8 @@ class AuthSession {
       realName: _asString(
         json['realName'] ?? json['nickname'] ?? json['username'],
       ),
+      nickname: _asString(json['nickname']),
+      avatar: _asString(json['avatar']),
       email: _asString(json['email']),
       mobile: _asString(json['mobile']),
       programmingLanguage: _asString(json['programmingLanguage']),
@@ -54,9 +63,29 @@ class AuthSession {
   final int schoolAccountId;
   final int schoolAccountType;
   final String realName;
+  final String nickname;
+  final String avatar;
   final String email;
   final String mobile;
   final String programmingLanguage;
+
+  String get displayName => nickname.trim().isEmpty ? realName : nickname;
+
+  AuthSession copyWithProfile(MemberProfile profile) {
+    return AuthSession(
+      userId: userId,
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+      schoolAccountId: schoolAccountId,
+      schoolAccountType: schoolAccountType,
+      realName: profile.realName,
+      nickname: profile.nickname,
+      avatar: profile.avatar,
+      email: profile.email,
+      mobile: profile.mobile,
+      programmingLanguage: profile.programmingLanguage,
+    );
+  }
 }
 
 class ApiException implements Exception {
@@ -66,6 +95,112 @@ class ApiException implements Exception {
 
   @override
   String toString() => message;
+}
+
+class SchoolChatRealtime {
+  SchoolChatRealtime._();
+
+  static final SchoolChatRealtime instance = SchoolChatRealtime._();
+  static const _messageType = 'school-chat-message';
+  static const _reconnectDelay = Duration(seconds: 3);
+
+  final _messages = StreamController<ChatMessage>.broadcast();
+  WebSocketChannel? _channel;
+  StreamSubscription<dynamic>? _subscription;
+  Timer? _reconnectTimer;
+  String? _token;
+  bool _closedByClient = true;
+
+  Stream<ChatMessage> get messages => _messages.stream;
+
+  static Uri webSocketUri(String token) {
+    final base = Uri.parse(ItClassApi.baseUrl);
+    return base.replace(
+      scheme: base.scheme == 'https' ? 'wss' : 'ws',
+      path: '/infra/ws',
+      queryParameters: {'token': token},
+    );
+  }
+
+  void connect() {
+    final token = ItClassSession.current?.accessToken ?? '';
+    if (token.isEmpty) return;
+    if (_token == token && _channel != null) return;
+    disconnect();
+    _closedByClient = false;
+    _token = token;
+    _open();
+  }
+
+  void disconnect() {
+    _closedByClient = true;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    unawaited(_subscription?.cancel());
+    _subscription = null;
+    unawaited(_channel?.sink.close());
+    _channel = null;
+    _token = null;
+  }
+
+  void _open() {
+    final token = _token;
+    if (_closedByClient || token == null || token.isEmpty) return;
+    final uri = webSocketUri(token);
+    try {
+      final channel = WebSocketChannel.connect(uri);
+      _channel = channel;
+      debugPrint(
+        '[itClass WS] connecting '
+        '${uri.scheme}://${uri.authority}${uri.path}',
+      );
+      _subscription = channel.stream.listen(
+        _handleFrame,
+        onError: (Object error, StackTrace stackTrace) {
+          debugPrint('[itClass WS] error=$error');
+          _scheduleReconnect();
+        },
+        onDone: () {
+          debugPrint('[itClass WS] disconnected');
+          _scheduleReconnect();
+        },
+        cancelOnError: true,
+      );
+    } catch (error) {
+      debugPrint('[itClass WS] connect failed: $error');
+      _scheduleReconnect();
+    }
+  }
+
+  void _handleFrame(dynamic frame) {
+    try {
+      final envelope = _asMap(jsonDecode('$frame'));
+      if (_asString(envelope['type']) != _messageType) return;
+      final rawContent = envelope['content'];
+      final content = rawContent is String
+          ? _asMap(jsonDecode(rawContent))
+          : _asMap(rawContent);
+      final message = _chatMessageFromJson(content);
+      if (message.id == null || message.conversationId == null) return;
+      debugPrint(
+        '[itClass WS] <-- $_messageType '
+        'conversation=${message.conversationId} message=${message.id}',
+      );
+      _messages.add(message);
+    } catch (error) {
+      debugPrint('[itClass WS] ignored invalid frame: $error');
+    }
+  }
+
+  void _scheduleReconnect() {
+    _channel = null;
+    _subscription = null;
+    if (_closedByClient || _reconnectTimer?.isActive == true) return;
+    _reconnectTimer = Timer(_reconnectDelay, () {
+      _reconnectTimer = null;
+      _open();
+    });
+  }
 }
 
 class ApiPage<T> {
@@ -89,10 +224,7 @@ class SchoolClassroom {
         json['name'] ?? json['classroomName'],
         fallback: 'Classroom',
       ),
-      programmingLanguage: _asString(
-        json['programmingLanguage'],
-        fallback: 'Java',
-      ),
+      programmingLanguage: _asString(json['programmingLanguage']),
     );
   }
 
@@ -188,6 +320,7 @@ class ItClassApi {
     );
     final session = AuthSession.fromJson(data);
     ItClassSession.current = session;
+    SchoolChatRealtime.instance.connect();
     return session;
   }
 
@@ -213,15 +346,15 @@ class ItClassApi {
     );
   }
 
-  Future<void> updateProfile({
+  Future<MemberProfile> updateProfile({
     required String realName,
     required String nickname,
     required String email,
     required String avatar,
     required String mobile,
     required String programmingLanguage,
-  }) {
-    return _put<void>(
+  }) async {
+    await _put<void>(
       '/school/account/profile',
       body: {
         'realName': realName,
@@ -232,6 +365,7 @@ class ItClassApi {
         'programmingLanguage': programmingLanguage,
       },
     );
+    return getCurrentUser();
   }
 
   Future<void> updatePassword({
@@ -497,14 +631,26 @@ class ItClassApi {
         .toList();
   }
 
+  Future<String> aiTutorWelcomeMessage(int classroomId) async {
+    final data = await _get<Map<String, dynamic>>(
+      '/school/ai-tutor/config/get',
+      query: {'classroomId': '$classroomId'},
+    );
+    return _asString(data['welcomeMessage']);
+  }
+
   Future<int> ensureAiConversation(int classroomId) async {
     final page = await _get<Map<String, dynamic>>(
       '/school/ai-tutor/conversation/page',
-      query: {'pageNo': '1', 'pageSize': '1', 'classroomId': '$classroomId'},
+      query: {'pageNo': '1', 'pageSize': '100', 'classroomId': '$classroomId'},
     );
     final conversations = _asList(page['list']);
-    if (conversations.isNotEmpty) {
-      return _asInt(_asMap(conversations.first)['id']) ?? 0;
+    for (final item in conversations) {
+      final conversation = _asMap(item);
+      if (_asInt(conversation['status']) != 20) {
+        final id = _asInt(conversation['id']);
+        if (id != null && id > 0) return id;
+      }
     }
     final data = await _post<dynamic>(
       '/school/ai-tutor/conversation/create',
@@ -582,6 +728,16 @@ class ItClassApi {
     return _page(data, _chatMessageFromJson).list.reversed.toList();
   }
 
+  Future<void> readChatMessages({
+    required int conversationId,
+    required int messageId,
+  }) {
+    return _put<void>(
+      '/school/chat/message/read',
+      body: {'conversationId': conversationId, 'messageId': messageId},
+    );
+  }
+
   Future<List<ExamQuestion>> generateExamQuestions({
     required String programmingLanguage,
     required String topic,
@@ -629,6 +785,7 @@ class ItClassApi {
 
   Future<StudentProfile> createStudent({
     required int classroomId,
+    required String programmingLanguage,
     required String realName,
     required String username,
     required String password,
@@ -643,8 +800,7 @@ class ItClassApi {
         'email': username,
         'password': password,
         'mobile': mobile,
-        'programmingLanguage':
-            ItClassSession.current?.programmingLanguage ?? 'Java',
+        'programmingLanguage': programmingLanguage,
       },
     );
     return _studentProfileFromAccountJson(_asMap(data));
@@ -661,16 +817,19 @@ class ItClassApi {
     return _asInt(data) ?? 0;
   }
 
-  Future<int> createQuestion(ExamQuestion question) async {
+  Future<int> createQuestion(
+    ExamQuestion question, {
+    required String programmingLanguage,
+  }) async {
     final data = await _post<dynamic>(
       '/school/exam-teacher/question/save',
       body: {
         'type': question.type ?? questionTypeSingleChoice,
         'difficulty': 1,
-        'programmingLanguage': 'Java',
+        'programmingLanguage': programmingLanguage,
         'title': question.topic,
         'content': question.question,
-        'referenceAnswer': question.explanation,
+        'referenceAnswer': _optionKey(question.answerIndex),
         'analysis': question.explanation,
         'defaultScore': question.score ?? 10,
         'status': 0,
@@ -723,8 +882,10 @@ class ItClassApi {
         'title': title,
         'description': description,
         'classroomIds': [classroomId],
-        'startTime': now.subtract(const Duration(minutes: 1)).toIso8601String(),
-        'endTime': now.add(const Duration(days: 30)).toIso8601String(),
+        'startTime': now
+            .subtract(const Duration(minutes: 1))
+            .millisecondsSinceEpoch,
+        'endTime': now.add(const Duration(days: 30)).millisecondsSinceEpoch,
         'durationMinutes': 30,
         'passScore': 60,
         'maxAttempts': 3,
@@ -951,12 +1112,14 @@ LearningVideo _learningVideoFromJson(Map<String, dynamic> json) {
     title: _asString(json['title'], fallback: 'Course Video'),
     category: _asString(
       json['classroomProgrammingLanguage'] ?? json['classroomName'],
-      fallback: 'Java',
     ),
     duration: durationSeconds > 0 ? '${(durationSeconds / 60).ceil()}分' : '未設定',
     progress: ((progressPercent ?? 0) / 100).clamp(0.0, 1.0),
     description: _asString(json['description']),
-    videoUrl: _asString(json['playUrl'] ?? json['videoUrl']),
+    videoUrl: _resolveFileAccessUrl(
+      accessUrl: json['playUrl'],
+      sourceUrl: json['videoUrl'],
+    ),
     durationSeconds: durationSeconds,
     lastPositionSeconds: _asInt(json['lastPositionSeconds']) ?? 0,
   );
@@ -968,31 +1131,55 @@ Lesson _lessonFromDocumentJson(Map<String, dynamic> json) {
     json['description'],
     fallback: 'アップロード教材を確認します。',
   );
-  final url = _asString(json['accessUrl'] ?? json['documentUrl']);
+  final url = _resolveFileAccessUrl(
+    accessUrl: json['accessUrl'],
+    sourceUrl: json['documentUrl'],
+  );
   return Lesson(
     id: _asInt(json['id']),
     classroomId: _asInt(json['classroomId']),
     title: title,
     level: _asString(
       json['classroomProgrammingLanguage'] ?? json['classroomName'],
-      fallback: 'Java',
     ),
     summary: description,
     content: url.isEmpty ? description : '$description\n\n資料URL: $url',
     code: '',
     sections: const [],
     exercise: const LessonExercise(
-      question: 'この教材を読んだあと、最初に確認するべきことはどれですか？',
-      options: ['要点を整理する', '何もせず閉じる', '関係ない動画を見る', 'ログアウトする'],
+      question: '',
+      options: [],
       answerIndex: 0,
-      correctReason: '要点整理が理解の確認になります。',
-      wrongReason: '教材の内容に沿って復習しましょう。',
-      standardAnswer: '教材の要点をまとめ、関連問題を解きます。',
+      correctReason: '',
+      wrongReason: '',
+      standardAnswer: '',
     ),
     aiSummary: description,
     documentUrl: url,
     fileName: _asString(json['fileName']),
   );
+}
+
+String _resolveFileAccessUrl({
+  required Object? accessUrl,
+  required Object? sourceUrl,
+}) {
+  final access = _asString(accessUrl);
+  final source = _asString(sourceUrl);
+  if (access.isEmpty) return source;
+  if (source.isEmpty) return access;
+  final accessUri = Uri.tryParse(access);
+  final sourceUri = Uri.tryParse(source);
+  final sourceIsHttp =
+      sourceUri?.scheme == 'http' || sourceUri?.scheme == 'https';
+  if (accessUri != null && sourceIsHttp) {
+    final decodedPath = Uri.decodeComponent(accessUri.path).toLowerCase();
+    if (decodedPath.startsWith('/http://') ||
+        decodedPath.startsWith('/https://')) {
+      return source;
+    }
+  }
+  return access;
 }
 
 ExamQuestion _examQuestionFromJson(Map<String, dynamic> json) {
@@ -1203,7 +1390,7 @@ CodeAssignment _codeAssignmentFromJson(Map<String, dynamic> json) {
   return CodeAssignment(
     id: _asInt(json['id']),
     title: _asString(json['title'], fallback: 'Code Assignment'),
-    level: _asString(json['level'], fallback: 'Java'),
+    level: _asString(json['level']),
     status: _asString(json['status'], fallback: 'API課題'),
     summary: _asString(json['summary']),
     prompt: _asString(json['prompt']),

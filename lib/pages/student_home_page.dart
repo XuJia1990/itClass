@@ -28,6 +28,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
   int? _examAttemptId;
   int? _loadedExamId;
   ExamResult? _examResult;
+  String _aiWelcomeMessage = '';
   bool _loading = false;
   String? _apiError;
   final List<double> _videoProgress = [];
@@ -36,11 +37,10 @@ class _StudentHomePageState extends State<StudentHomePage> {
 
   final _aiInput = TextEditingController();
   final _teacherInput = TextEditingController();
-  final _codeInput = TextEditingController(text: _defaultCode);
+  final _codeInput = TextEditingController();
+  StreamSubscription<ChatMessage>? _chatMessageSubscription;
 
-  final List<ChatMessage> _aiMessages = [
-    ChatMessage.ai('こんにちは。IT教師 AI です。Java、アルゴリズム、Web API、テスト問題について質問できます。'),
-  ];
+  final List<ChatMessage> _aiMessages = [];
 
   final List<ChatMessage> _teacherMessages = [];
 
@@ -55,11 +55,15 @@ class _StudentHomePageState extends State<StudentHomePage> {
   @override
   void initState() {
     super.initState();
+    _chatMessageSubscription = SchoolChatRealtime.instance.messages.listen(
+      _handleRealtimeChatMessage,
+    );
     unawaited(_loadStudentData());
   }
 
   @override
   void dispose() {
+    unawaited(_chatMessageSubscription?.cancel());
     _aiInput.dispose();
     _teacherInput.dispose();
     _codeInput.dispose();
@@ -71,7 +75,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
     return _ResponsiveShell(
       title: 'Eden AI プログラミング教師',
       subtitle: '学生画面：動画学習、文書学習、問題演習、テスト進捗',
-      profileName: '${ItClassSession.current?.realName ?? ''}（学生）',
+      profileName: '${ItClassSession.current?.displayName ?? ''}（学生）',
       profileRole: '学生',
       activeIndex: StudentSection.values.indexOf(_section),
       items: _studentMenu,
@@ -434,12 +438,16 @@ class _StudentHomePageState extends State<StudentHomePage> {
         return _ProfileSettingsWorkspace(
           roleTitle: '学生設定',
           roleSubtitle: 'プロフィール、アイコン、連絡先、パスワードをバックエンドに保存します。',
-          initialName: ItClassSession.current?.realName ?? '',
+          initialRealName: ItClassSession.current?.realName ?? '',
+          initialNickname: ItClassSession.current?.nickname ?? '',
           initialEmail: ItClassSession.current?.email ?? '',
           initialPhone: ItClassSession.current?.mobile ?? '',
-          initialAvatar: '',
+          initialAvatar: ItClassSession.current?.avatar ?? '',
           initialBasicInfo: ItClassSession.current?.programmingLanguage ?? '',
           section: _settingSection,
+          onProfileChanged: (profile) {
+            setState(() => ItClassSession.updateProfile(profile));
+          },
         );
     }
   }
@@ -480,10 +488,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
   void _sendTeacherMessage() {
     final text = _teacherInput.text.trim();
     if (text.isEmpty) return;
-    setState(() {
-      _teacherMessages.add(ChatMessage.student(text));
-      _teacherInput.clear();
-    });
+    setState(_teacherInput.clear);
     unawaited(_sendTeacherMessageToApi(text));
   }
 
@@ -502,10 +507,12 @@ class _StudentHomePageState extends State<StudentHomePage> {
             peerAccountId: peer.accountId!,
           );
       _chatConversationId = conversationId;
-      await ItClassApi.instance.sendChatMessage(
+      final message = await ItClassApi.instance.sendChatMessage(
         conversationId: conversationId,
         content: text,
       );
+      if (!mounted || _chatConversationId != conversationId) return;
+      setState(() => _upsertTeacherMessage(message));
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -615,6 +622,9 @@ class _StudentHomePageState extends State<StudentHomePage> {
       final topics = await ItClassApi.instance.aiConversations(
         classroomId: classroomId,
       );
+      final aiWelcomeMessage = classroomId == null
+          ? ''
+          : await ItClassApi.instance.aiTutorWelcomeMessage(classroomId);
       final videos = await ItClassApi.instance.courseVideos(
         classroomId: classroomId,
       );
@@ -629,6 +639,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
       if (!mounted) return;
       setState(() {
         _selectedClassroomId = classroomId;
+        _aiWelcomeMessage = aiWelcomeMessage;
         _apiTopics = topics.list;
         _apiVideos = videos.list;
         _apiLessons = docs.list;
@@ -644,6 +655,9 @@ class _StudentHomePageState extends State<StudentHomePage> {
           ..addAll(_videos.map((video) => video.progress));
         if (_teacherContacts.isNotEmpty) {
           _selectedChatStudent = _teacherContacts.first.name;
+        }
+        if (_aiMessages.isEmpty && _aiWelcomeMessage.isNotEmpty) {
+          _aiMessages.add(ChatMessage.ai(_aiWelcomeMessage));
         }
       });
     } catch (error) {
@@ -707,9 +721,10 @@ class _StudentHomePageState extends State<StudentHomePage> {
   void _startNewAiTopic() {
     setState(() {
       _aiConversationId = null;
-      _aiMessages
-        ..clear()
-        ..add(ChatMessage.ai('新しい話題を作成しました。プログラミングの質問を入力してください。'));
+      _aiMessages.clear();
+      if (_aiWelcomeMessage.isNotEmpty) {
+        _aiMessages.add(ChatMessage.ai(_aiWelcomeMessage));
+      }
     });
   }
 
@@ -767,10 +782,8 @@ class _StudentHomePageState extends State<StudentHomePage> {
         _teacherMessages
           ..clear()
           ..addAll(messages);
-        if (_teacherMessages.isEmpty) {
-          _teacherMessages.add(ChatMessage.teacher('まだメッセージはありません。'));
-        }
       });
+      _markLatestTeacherMessageRead(messages);
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -779,6 +792,51 @@ class _StudentHomePageState extends State<StudentHomePage> {
           ..add(ChatMessage.teacher('会話履歴の取得に失敗しました：$error'));
       });
     }
+  }
+
+  void _handleRealtimeChatMessage(ChatMessage message) {
+    if (!mounted || message.conversationId != _chatConversationId) return;
+    setState(() => _upsertTeacherMessage(message));
+    if (message.author == MessageAuthor.teacher && message.id != null) {
+      unawaited(
+        ItClassApi.instance.readChatMessages(
+          conversationId: message.conversationId!,
+          messageId: message.id!,
+        ),
+      );
+    }
+  }
+
+  void _upsertTeacherMessage(ChatMessage message) {
+    final id = message.id;
+    final index = id == null
+        ? -1
+        : _teacherMessages.indexWhere((item) => item.id == id);
+    if (index >= 0) {
+      _teacherMessages[index] = message;
+    } else {
+      _teacherMessages.add(message);
+    }
+  }
+
+  void _markLatestTeacherMessageRead(List<ChatMessage> messages) {
+    final conversationId = _chatConversationId;
+    final incoming = messages
+        .where(
+          (message) =>
+              message.author == MessageAuthor.teacher && message.id != null,
+        )
+        .toList();
+    if (conversationId == null || incoming.isEmpty) return;
+    final latestId = incoming
+        .map((message) => message.id!)
+        .reduce((left, right) => left > right ? left : right);
+    unawaited(
+      ItClassApi.instance.readChatMessages(
+        conversationId: conversationId,
+        messageId: latestId,
+      ),
+    );
   }
 }
 
@@ -812,8 +870,8 @@ Lesson _lessonFromExam(SchoolExamSummary exam) {
     code: '',
     sections: const [],
     exercise: const LessonExercise(
-      question: 'テストを開始します。',
-      options: ['開始する', 'あとで確認する'],
+      question: '',
+      options: [],
       answerIndex: 0,
       correctReason: '',
       wrongReason: '',

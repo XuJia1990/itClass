@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'shared/api_runtime_config_stub.dart'
     if (dart.library.html) 'shared/api_runtime_config_web.dart';

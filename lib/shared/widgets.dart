@@ -1035,10 +1035,8 @@ class _LearningWorkspaceState extends State<_LearningWorkspace> {
                   if (lesson.documentUrl.isNotEmpty) ...[
                     const SizedBox(height: 14),
                     FilledButton.icon(
-                      onPressed: () => launchUrl(
-                        Uri.parse(lesson.documentUrl),
-                        mode: LaunchMode.externalApplication,
-                      ),
+                      onPressed: () =>
+                          unawaited(_openDocument(lesson.documentUrl)),
                       icon: const Icon(Icons.open_in_new_rounded),
                       label: const Text('教材を開く'),
                     ),
@@ -1067,6 +1065,26 @@ class _LearningWorkspaceState extends State<_LearningWorkspace> {
         ],
       ],
     );
+  }
+
+  Future<void> _openDocument(String url) async {
+    try {
+      final uri = Uri.tryParse(url);
+      if (uri == null || !uri.hasScheme) {
+        throw const ApiException('教材URLが正しくありません。');
+      }
+      final opened = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+        webOnlyWindowName: '_blank',
+      );
+      if (!opened) throw const ApiException('ブラウザで教材を開けませんでした。');
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text('教材を開けませんでした：$error')));
+    }
   }
 }
 

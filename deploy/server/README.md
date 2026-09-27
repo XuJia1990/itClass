@@ -6,8 +6,8 @@ The backend deployment owns the shared `twschool-watchtower-dev` container. Star
 the backend stack first, then install this compose project:
 
 ```bash
-mkdir -p /work/projects/itclass-dev
-cd /work/projects/itclass-dev
+mkdir -p /work/projects/twschool-app-dev
+cd /work/projects/twschool-app-dev
 cp .env.example .env
 docker login ghcr.io -u xujia1990
 chmod +x deploy-dev.sh

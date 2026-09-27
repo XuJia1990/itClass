@@ -10,7 +10,7 @@ const _studentMenu = [
 ];
 
 const _teacherMenu = [
-  MenuItem(Icons.mark_chat_unread_rounded, 'AI回答不能（先生対応）', Color(0xFFF97316)),
+  MenuItem(Icons.mark_chat_unread_rounded, '学生のAI質問対応', Color(0xFFF97316)),
   MenuItem(Icons.verified_rounded, '成績確認', Color(0xFF84CC16)),
   MenuItem(Icons.chat_rounded, '学生チャット', Color(0xFF38BDF8)),
   MenuItem(Icons.cloud_upload_rounded, '教材・テストアップロード', Color(0xFF8B5CF6)),
@@ -21,7 +21,7 @@ const _teacherMenu = [
 String _teacherTitle(TeacherSection section) {
   switch (section) {
     case TeacherSection.pendingAi:
-      return 'AI回答不能（先生対応）';
+      return '学生のAI質問対応';
     case TeacherSection.codeScoring:
       return '成績確認';
     case TeacherSection.studentMessages:

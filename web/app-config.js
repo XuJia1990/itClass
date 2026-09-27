@@ -6,4 +6,4 @@
 //   globalThis.ITCLASS_API_BASE_URL = 'https://twcschool.example.com/app-api';
 //
 // If only an origin is provided, the Flutter app will append /app-api.
-globalThis.ITCLASS_API_BASE_URL = '';
+globalThis.ITCLASS_API_BASE_URL = 'https://api-dev.tw-onlineschool.com/app-api';

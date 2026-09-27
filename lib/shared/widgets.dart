@@ -1136,6 +1136,7 @@ class _VideoLearningWorkspace extends StatelessWidget {
         const SizedBox(height: 14),
         for (var i = 0; i < videos.length; i++)
           _VideoProgressCard(
+            key: ValueKey(videos[i].id ?? videos[i].videoUrl),
             video: videos[i],
             progress: progress[i],
             onMarkWatched: () => onProgressChanged(i, 1.0),
@@ -1150,6 +1151,7 @@ class _VideoLearningWorkspace extends StatelessWidget {
 
 class _VideoProgressCard extends StatefulWidget {
   const _VideoProgressCard({
+    super.key,
     required this.video,
     required this.progress,
     required this.onMarkWatched,
@@ -1174,11 +1176,12 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
   bool _loading = false;
   String? _error;
   int _lastUiSecond = -1;
-  int _lastSavedSecond = -1;
   bool _endedSaved = false;
+  bool _savingPosition = false;
 
   @override
   void dispose() {
+    unawaited(_saveCurrentPosition());
     _controller?.removeListener(_handlePlaybackProgress);
     _controller?.dispose();
     super.dispose();
@@ -1281,6 +1284,8 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
   Future<void> _togglePlayer() async {
     if (_showPlayer) {
       await _controller?.pause();
+      await _saveCurrentPosition();
+      if (!mounted) return;
       setState(() => _showPlayer = false);
       return;
     }
@@ -1333,18 +1338,41 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
       widget.onProgressChanged((position / duration).clamp(0.0, 1.0));
       if (mounted) setState(() {});
     }
-    if ((position - _lastSavedSecond >= 5) || (ended && !_endedSaved)) {
-      _lastSavedSecond = position;
-      _endedSaved = ended;
-      unawaited(widget.onPositionSaved(position, duration, ended));
+    if (ended && !_endedSaved) {
+      unawaited(_saveCurrentPosition(completed: true));
     }
   }
 
   void _markWatched() {
     final duration =
         _controller?.value.duration.inSeconds ?? widget.video.durationSeconds;
+    _endedSaved = true;
     widget.onMarkWatched();
-    unawaited(widget.onPositionSaved(duration, duration, true));
+    unawaited(_savePosition(duration, duration, true));
+  }
+
+  Future<void> _saveCurrentPosition({bool completed = false}) async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    final duration = controller.value.duration.inSeconds;
+    if (duration <= 0) return;
+    final position = controller.value.position.inSeconds.clamp(0, duration);
+    final ended =
+        completed || controller.value.isCompleted || position >= duration;
+    if (ended) _endedSaved = true;
+    await _savePosition(position, duration, ended);
+  }
+
+  Future<void> _savePosition(int position, int duration, bool ended) async {
+    if (_savingPosition) return;
+    _savingPosition = true;
+    try {
+      await widget.onPositionSaved(position, duration, ended);
+    } catch (error) {
+      debugPrint('[itClass video] progress save failed: $error');
+    } finally {
+      _savingPosition = false;
+    }
   }
 
   Widget _videoPlayerArea() {
@@ -1389,12 +1417,14 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
           Row(
             children: [
               IconButton.filled(
-                onPressed: () {
-                  setState(() {
-                    controller.value.isPlaying
-                        ? controller.pause()
-                        : controller.play();
-                  });
+                onPressed: () async {
+                  if (controller.value.isPlaying) {
+                    await controller.pause();
+                    await _saveCurrentPosition();
+                  } else {
+                    await controller.play();
+                  }
+                  if (mounted) setState(() {});
                 },
                 icon: Icon(
                   controller.value.isPlaying
@@ -1911,8 +1941,8 @@ class _TeacherRequestWorkspace extends StatelessWidget {
       children: [
         _SectionHeader(
           icon: Icons.support_agent_rounded,
-          title: 'AI回答不能（先生対応）',
-          subtitle: 'AI が回答できない、または学生が納得できない場合は先生が確認して返信します。',
+          title: '学生のAI質問対応',
+          subtitle: '学生が AI に送った質問と AI の初期回答です。必要に応じて先生が追加回答します。',
         ),
         const SizedBox(height: 16),
         Card(
@@ -2054,7 +2084,7 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
         _SectionHeader(
           icon: Icons.chat_bubble_rounded,
           title: '${widget.student.name} とチャット',
-          subtitle: widget.student.status,
+          subtitle: '学生との直接メッセージ · ${widget.student.status}',
         ),
         const SizedBox(height: 16),
         if (_loading)

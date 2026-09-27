@@ -83,7 +83,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: TeacherHomePage()));
     await tester.pump();
 
-    expect(find.text('AI回答不能（先生対応）'), findsWidgets);
+    expect(find.text('学生のAI質問対応'), findsWidgets);
     expect(find.text('成績確認'), findsWidgets);
     expect(find.text('システム管理'), findsWidgets);
   });

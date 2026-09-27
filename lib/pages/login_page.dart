@@ -391,6 +391,7 @@ class _RoleAuthPageState extends State<_RoleAuthPage> {
                     const SizedBox(height: 22),
                     TextField(
                       controller: _idController,
+                      textInputAction: TextInputAction.next,
                       decoration: const InputDecoration(
                         labelText: 'ログインID',
                         prefixIcon: Icon(Icons.mail_outline_rounded),
@@ -400,6 +401,10 @@ class _RoleAuthPageState extends State<_RoleAuthPage> {
                     TextField(
                       controller: _passwordController,
                       obscureText: true,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) {
+                        if (!_loggingIn) unawaited(_login());
+                      },
                       decoration: const InputDecoration(
                         labelText: 'パスワード',
                         prefixIcon: Icon(Icons.lock_outline_rounded),
@@ -435,8 +440,13 @@ class _RoleAuthPageState extends State<_RoleAuthPage> {
 
   Future<void> _login() async {
     final account = _idController.text.trim();
-    final password = _passwordController.text;
-    if (account.isEmpty || password.isEmpty) return;
+    final password = _passwordController.text.trim();
+    if (account.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('ログインIDとパスワードを入力してください。')));
+      return;
+    }
     setState(() => _loggingIn = true);
     try {
       final session = await ItClassApi.instance.accountLogin(
@@ -453,9 +463,9 @@ class _RoleAuthPageState extends State<_RoleAuthPage> {
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('ログインできませんでした：$error')));
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text('ログインできませんでした：$error')));
     } finally {
       if (mounted) setState(() => _loggingIn = false);
     }

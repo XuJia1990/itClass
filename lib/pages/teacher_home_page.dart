@@ -64,8 +64,8 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     switch (_section) {
       case TeacherSection.pendingAi:
         return _HistoryPanel(
-          title: 'AI会話未回答',
-          actionLabel: '${_requests.where((e) => !e.answered).length}件',
+          title: '学生のAI質問',
+          actionLabel: '${_requests.where((e) => !e.answered).length}件未対応',
           children: [
             if (_apiError != null)
               Padding(
@@ -87,14 +87,14 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
                 title: _requests[i].student,
                 subtitle: _requests[i].category,
                 detail: _requests[i].question,
-                badge: _requests[i].answered ? '回答済み' : '未回答',
+                badge: _requests[i].answered ? '先生回答済み' : '先生未回答',
                 onTap: () => setState(() => _selectedRequest = i),
               ),
           ],
         );
       case TeacherSection.studentMessages:
         return _HistoryPanel(
-          title: '学生',
+          title: '学生（直接チャット）',
           children: [
             if (_teacherStudents.isEmpty)
               const _InlineNotice(
@@ -212,7 +212,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
             child: _InlineNotice(
               tone: _NoticeTone.warning,
               title: '未回答データがありません',
-              message: '学生が AI に質問すると、先生対応が必要な質問がここに表示されます。',
+              message: '学生が AI に質問した履歴のうち、先生が未回答の質問がここに表示されます。',
             ),
           );
         }

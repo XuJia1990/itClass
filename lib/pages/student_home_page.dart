@@ -27,10 +27,11 @@ class _StudentHomePageState extends State<StudentHomePage> {
   int? _chatConversationId;
   int? _examAttemptId;
   int? _loadedExamId;
+  int? _loadingExamId;
   ExamResult? _examResult;
   String _aiWelcomeMessage = '';
-  bool _loading = false;
   String? _apiError;
+  String? _examError;
   final List<double> _videoProgress = [];
   final Map<String, int> _examAnswers = {};
   final Set<String> _submittedExamQuestions = {};
@@ -82,6 +83,9 @@ class _StudentHomePageState extends State<StudentHomePage> {
       onSelect: (index) {
         final section = StudentSection.values[index];
         setState(() => _section = section);
+        if (section == StudentSection.exam && _apiExams.isNotEmpty) {
+          unawaited(_loadSelectedExam());
+        }
         if (section == StudentSection.askTeacher &&
             _teacherContacts.isNotEmpty) {
           unawaited(_selectTeacherContact(_teacherContacts.first));
@@ -377,7 +381,8 @@ class _StudentHomePageState extends State<StudentHomePage> {
             ),
           );
         }
-        final selectedExam = _apiExams[_selectedExamLesson];
+        final examIndex = _selectedExamLesson.clamp(0, _apiExams.length - 1);
+        final selectedExam = _apiExams[examIndex];
         if (!selectedExam.isAvailable) {
           return const Center(
             child: _InlineNotice(
@@ -387,10 +392,36 @@ class _StudentHomePageState extends State<StudentHomePage> {
             ),
           );
         }
-        if (usingApi &&
-            (_loading || _loadedExamId != _apiExams[_selectedExamLesson].id)) {
-          unawaited(_loadSelectedExam());
+        if (_loadingExamId == selectedExam.id) {
           return const Center(child: CircularProgressIndicator());
+        }
+        if (_loadedExamId != selectedExam.id) {
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _InlineNotice(
+                      tone: _NoticeTone.warning,
+                      title: _examError == null
+                          ? 'テストを開始してください'
+                          : 'テストを開始できません',
+                      message: _examError ?? '開始ボタンを押すと問題を読み込みます。',
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: _loadSelectedExam,
+                      icon: const Icon(Icons.play_arrow_rounded),
+                      label: Text(_examError == null ? 'テスト開始' : '再試行'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
         }
         final lesson = _lessonFromExam(selectedExam);
         final questions = _apiExamQuestions;
@@ -612,10 +643,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
   }
 
   Future<void> _loadStudentData() async {
-    setState(() {
-      _loading = true;
-      _apiError = null;
-    });
+    setState(() => _apiError = null);
     try {
       final classrooms = await ItClassApi.instance.myClassrooms();
       final classroomId = classrooms.isNotEmpty ? classrooms.first.id : null;
@@ -663,34 +691,44 @@ class _StudentHomePageState extends State<StudentHomePage> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _apiError = 'APIデータ取得に失敗しました：$error');
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
   }
 
   Future<void> _loadSelectedExam() async {
     if (_apiExams.isEmpty) return;
-    final exam = _apiExams[_selectedExamLesson];
+    final examIndex = _selectedExamLesson.clamp(0, _apiExams.length - 1);
+    final exam = _apiExams[examIndex];
     if (!exam.isAvailable) {
-      setState(() => _apiError = 'このテストは現在受験できません。');
+      setState(() => _examError = 'このテストは現在受験できません。');
       return;
     }
-    if (_loadedExamId == exam.id && _apiExamQuestions.isNotEmpty) return;
-    setState(() => _loading = true);
+    if (_loadedExamId == exam.id || _loadingExamId == exam.id) return;
+    setState(() {
+      _loadingExamId = exam.id;
+      _examError = null;
+    });
     try {
       final attempt = await ItClassApi.instance.startExam(exam.id);
-      if (!mounted) return;
+      if (!mounted || _loadingExamId != exam.id) return;
       setState(() {
         _examAttemptId = attempt.attemptId;
         _loadedExamId = exam.id;
         _apiExamQuestions = attempt.questions;
         _examResult = null;
+        _examAnswers.clear();
+        _submittedExamQuestions.clear();
       });
     } catch (error) {
-      if (!mounted) return;
-      setState(() => _apiError = 'テスト開始に失敗しました：$error');
+      if (!mounted || _loadingExamId != exam.id) return;
+      final message = 'テスト開始に失敗しました：$error';
+      setState(() => _examError = message);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(message)));
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && _loadingExamId == exam.id) {
+        setState(() => _loadingExamId = null);
+      }
     }
   }
 

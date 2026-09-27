@@ -1283,8 +1283,10 @@ TeacherRequest _teacherRequestFromJson(Map<String, dynamic> json) {
 }
 
 StudentProfile _studentProfileFromContactJson(Map<String, dynamic> json) {
+  final nickname = _asString(json['nickname']).trim();
+  final realName = _asString(json['realName'], fallback: 'Student');
   return StudentProfile(
-    _asString(json['realName'] ?? json['nickname'], fallback: 'Student'),
+    nickname.isEmpty ? realName : nickname,
     _asString(json['classroomName'], fallback: '学生'),
     '会話履歴を開く',
     accountId: _asInt(json['accountId']),

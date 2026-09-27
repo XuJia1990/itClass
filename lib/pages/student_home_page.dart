@@ -23,6 +23,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
   List<StudentProfile> _chatContacts = const [];
   List<CodeAssignment> _apiCodeAssignments = const [];
   int? _selectedClassroomId;
+  int? _selectedChatAccountId;
   int? _aiConversationId;
   int? _chatConversationId;
   int? _examAttemptId;
@@ -86,9 +87,8 @@ class _StudentHomePageState extends State<StudentHomePage> {
         if (section == StudentSection.exam && _apiExams.isNotEmpty) {
           unawaited(_loadSelectedExam());
         }
-        if (section == StudentSection.askTeacher &&
-            _teacherContacts.isNotEmpty) {
-          unawaited(_selectTeacherContact(_teacherContacts.first));
+        if (section == StudentSection.askTeacher) {
+          unawaited(_refreshTeacherContacts());
         }
       },
       onLogout: _logout,
@@ -683,6 +683,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
           ..addAll(_videos.map((video) => video.progress));
         if (_teacherContacts.isNotEmpty) {
           _selectedChatStudent = _teacherContacts.first.name;
+          _selectedChatAccountId = _teacherContacts.first.accountId;
         }
         if (_aiMessages.isEmpty && _aiWelcomeMessage.isNotEmpty) {
           _aiMessages.add(ChatMessage.ai(_aiWelcomeMessage));
@@ -800,6 +801,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
   Future<void> _selectTeacherContact(StudentProfile student) async {
     setState(() {
       _selectedChatStudent = student.name;
+      _selectedChatAccountId = student.accountId;
       _teacherMessages
         ..clear()
         ..add(ChatMessage.teacher('会話履歴を読み込み中です。'));
@@ -829,6 +831,30 @@ class _StudentHomePageState extends State<StudentHomePage> {
           ..clear()
           ..add(ChatMessage.teacher('会話履歴の取得に失敗しました：$error'));
       });
+    }
+  }
+
+  Future<void> _refreshTeacherContacts() async {
+    try {
+      final contacts = await ItClassApi.instance.chatContacts(
+        classroomId: _selectedClassroomId,
+      );
+      if (!mounted) return;
+      StudentProfile? selected;
+      for (final contact in contacts) {
+        if (contact.accountId == _selectedChatAccountId) {
+          selected = contact;
+          break;
+        }
+      }
+      selected ??= contacts.isEmpty ? null : contacts.first;
+      setState(() => _chatContacts = contacts);
+      if (selected != null) await _selectTeacherContact(selected);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text('先生一覧の更新に失敗しました：$error')));
     }
   }
 

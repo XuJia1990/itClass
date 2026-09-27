@@ -17,6 +17,10 @@ on:
       - 'analysis_options.yaml'
   workflow_dispatch:
 
+concurrency:
+  group: itclass-web-dev
+  cancel-in-progress: true
+
 permissions:
   contents: read
   packages: write

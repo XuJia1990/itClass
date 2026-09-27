@@ -9,6 +9,12 @@ docker compose pull twschool-app-dev
 echo "[deploy] Start itClass web..."
 docker compose up -d twschool-app-dev
 
+if docker inspect twschool-watchtower-dev >/dev/null 2>&1; then
+  echo "[deploy] Automatic updates are enabled through twschool-watchtower-dev."
+else
+  echo "[deploy] WARNING: twschool-watchtower-dev is not running; future images will require a manual deploy." >&2
+fi
+
 echo "[deploy] Check local page..."
 for attempt in $(seq 1 20); do
   if curl --fail --silent --show-error http://127.0.0.1:4004/ >/dev/null; then

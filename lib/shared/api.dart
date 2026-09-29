@@ -480,12 +480,24 @@ class ItClassApi {
     final request = http.MultipartRequest('POST', uri);
     request.headers.addAll(_headers(json: false));
     request.fields['path'] = '$directory/${file.name}';
+    final contentType = MediaType.parse(_contentType(file));
     if (file.bytes != null) {
       request.files.add(
-        http.MultipartFile.fromBytes('file', file.bytes!, filename: file.name),
+        http.MultipartFile.fromBytes(
+          'file',
+          file.bytes!,
+          filename: file.name,
+          contentType: contentType,
+        ),
       );
     } else if (file.path != null) {
-      request.files.add(await http.MultipartFile.fromPath('file', file.path!));
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'file',
+          file.path!,
+          contentType: contentType,
+        ),
+      );
     } else {
       throw const ApiException('ファイル内容を読み取れませんでした');
     }

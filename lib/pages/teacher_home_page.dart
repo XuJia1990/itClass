@@ -126,7 +126,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
             _CompactListCard(
               title: '学習資料アップロード',
               subtitle: '${_classrooms.length}クラス',
-              detail: '担当クラスに動画、PDF、テストを登録します。',
+              detail: '担当クラスに動画、文書教材、テストを登録します。',
               onTap: () => setState(() => _section = TeacherSection.relearning),
             ),
           ],
@@ -183,9 +183,9 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
             ),
             _CompactListCard(
               selected: _uploadType == UploadMaterialType.pdf,
-              title: 'PDFアップロード',
+              title: '文書教材アップロード',
               subtitle: '文書教材',
-              detail: 'PDF教材だけをアップロードし、文書学習に反映します。',
+              detail: 'PDF、PowerPoint、Word をアップロードし、文書学習に反映します。',
               onTap: () => setState(() => _uploadType = UploadMaterialType.pdf),
             ),
             _CompactListCard(

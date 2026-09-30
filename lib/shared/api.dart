@@ -479,7 +479,7 @@ class ItClassApi {
     final uri = _uri('/infra/file/upload');
     final request = http.MultipartRequest('POST', uri);
     request.headers.addAll(_headers(json: false));
-    request.fields['path'] = '$directory/${file.name}';
+    request.fields['directory'] = directory;
     final contentType = MediaType.parse(_contentType(file));
     if (file.bytes != null) {
       request.files.add(
@@ -1455,6 +1455,14 @@ String _contentType(PlatformFile file) {
       return 'video/quicktime';
     case 'pdf':
       return 'application/pdf';
+    case 'ppt':
+      return 'application/vnd.ms-powerpoint';
+    case 'pptx':
+      return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    case 'doc':
+      return 'application/msword';
+    case 'docx':
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
     default:
       return 'application/octet-stream';
   }

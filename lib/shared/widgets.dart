@@ -1464,14 +1464,6 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              widget.video.videoUrl,
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
-            ),
-          ),
         ],
       ),
     );
@@ -2329,11 +2321,11 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
           ),
         ] else if (widget.type == UploadMaterialType.pdf) ...[
           _UploadDropZone(
-            icon: Icons.picture_as_pdf_rounded,
-            title: 'PDF教材をアップロード',
-            subtitle: 'PDF教材を AI教室の文書学習に登録します。',
-            buttonLabel: 'PDFファイルを選択',
-            allowedExtensions: const ['pdf'],
+            icon: Icons.description_rounded,
+            title: '文書教材をアップロード',
+            subtitle: 'PDF / PPT / PPTX / DOC / DOCX を文書学習に登録します。',
+            buttonLabel: '教材ファイルを選択',
+            allowedExtensions: const ['pdf', 'ppt', 'pptx', 'doc', 'docx'],
             fileType: FileType.custom,
             onUpload: _uploadCourseMaterial,
           ),
@@ -2587,7 +2579,7 @@ IconData _uploadTypeIcon(UploadMaterialType type) {
     case UploadMaterialType.video:
       return Icons.video_file_rounded;
     case UploadMaterialType.pdf:
-      return Icons.picture_as_pdf_rounded;
+      return Icons.description_rounded;
     case UploadMaterialType.test:
       return Icons.quiz_rounded;
   }
@@ -2598,7 +2590,7 @@ String _uploadTypeTitle(UploadMaterialType type) {
     case UploadMaterialType.video:
       return '動画アップロード';
     case UploadMaterialType.pdf:
-      return 'PDFアップロード';
+      return '文書教材アップロード';
     case UploadMaterialType.test:
       return 'テストアップロード';
   }
@@ -2609,7 +2601,7 @@ String _uploadTypeSubtitle(UploadMaterialType type) {
     case UploadMaterialType.video:
       return '授業録画だけをアップロードし、学生の動画学習と進捗管理に反映します。';
     case UploadMaterialType.pdf:
-      return 'PDF教材だけをアップロードし、学生の文書学習に反映します。';
+      return 'PDF、PowerPoint、Word をアップロードし、学生の文書学習に反映します。';
     case UploadMaterialType.test:
       return '選択問題テストだけをAI生成・先生確認・編集してからアップロードします。';
   }

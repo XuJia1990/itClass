@@ -613,7 +613,23 @@ class _MessageBubble extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: _AppPalette.line),
         ),
-        child: Text(message.text, style: const TextStyle(height: 1.5)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!isStudent) ...[
+              Text(
+                isTeacher ? '先生' : 'AI',
+                style: const TextStyle(
+                  color: _AppPalette.muted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+            ],
+            Text(message.text, style: const TextStyle(height: 1.5)),
+          ],
+        ),
       ),
     );
   }

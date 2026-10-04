@@ -3,6 +3,55 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:it_class/main.dart';
 
 void main() {
+  test('AI history keeps the original answer before the teacher follow-up', () {
+    final messages = chatMessagesFromAiQuestionJson({
+      'questionContent': 'Javaの配列とは？',
+      'aiAnswer': 'AIの説明',
+      'teacherAnswer': '先生の補足',
+      'effectiveAnswer': '先生の補足',
+    });
+
+    expect(messages.map((message) => message.author), [
+      MessageAuthor.student,
+      MessageAuthor.ai,
+      MessageAuthor.teacher,
+    ]);
+    expect(messages.map((message) => message.text), [
+      'Javaの配列とは？',
+      'AIの説明',
+      '先生の補足',
+    ]);
+  });
+
+  test('AI history handles unanswered and teacher-only questions', () {
+    final waiting = chatMessagesFromAiQuestionJson({
+      'questionContent': '質問',
+      'aiAnswer': null,
+      'teacherAnswer': null,
+      'effectiveAnswer': null,
+    });
+    final teacherOnly = chatMessagesFromAiQuestionJson({
+      'questionContent': '質問',
+      'teacherAnswer': '先生の回答',
+      'effectiveAnswer': '先生の回答',
+    });
+    final aiOnly = chatMessagesFromAiQuestionJson({
+      'questionContent': '質問',
+      'aiAnswer': 'AIの回答',
+      'effectiveAnswer': 'AIの回答',
+    });
+
+    expect(waiting.length, 1);
+    expect(aiOnly.map((message) => message.author), [
+      MessageAuthor.student,
+      MessageAuthor.ai,
+    ]);
+    expect(teacherOnly.map((message) => message.author), [
+      MessageAuthor.student,
+      MessageAuthor.teacher,
+    ]);
+  });
+
   test('chat websocket URL uses the server root without a fragment', () {
     final uri = SchoolChatRealtime.webSocketUri('secret-token');
 

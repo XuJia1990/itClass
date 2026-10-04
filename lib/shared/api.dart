@@ -639,7 +639,7 @@ class ItClassApi {
       query: {'conversationId': '$conversationId'},
     );
     return data
-        .expand((item) => _chatMessagesFromAiQuestionJson(_asMap(item)))
+        .expand((item) => chatMessagesFromAiQuestionJson(_asMap(item)))
         .toList();
   }
 
@@ -1389,14 +1389,17 @@ Topic _topicFromAiConversationJson(Map<String, dynamic> json) {
   );
 }
 
-List<ChatMessage> _chatMessagesFromAiQuestionJson(Map<String, dynamic> json) {
+List<ChatMessage> chatMessagesFromAiQuestionJson(Map<String, dynamic> json) {
   final question = _asString(json['questionContent']);
-  final answer = _asString(
-    json['effectiveAnswer'] ?? json['aiAnswer'] ?? json['teacherAnswer'],
-  );
+  final aiAnswer = _asString(json['aiAnswer']);
+  final teacherAnswer = _asString(json['teacherAnswer']);
+  final legacyAnswer = _asString(json['effectiveAnswer']);
   return [
     if (question.isNotEmpty) ChatMessage.student(question),
-    if (answer.isNotEmpty) ChatMessage.ai(answer),
+    if (aiAnswer.isNotEmpty) ChatMessage.ai(aiAnswer),
+    if (teacherAnswer.isNotEmpty) ChatMessage.teacher(teacherAnswer),
+    if (aiAnswer.isEmpty && teacherAnswer.isEmpty && legacyAnswer.isNotEmpty)
+      ChatMessage.ai(legacyAnswer),
   ];
 }
 

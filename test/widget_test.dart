@@ -26,7 +26,8 @@ void main() {
   test('AI history handles unanswered and teacher-only questions', () {
     final waiting = chatMessagesFromAiQuestionJson({
       'questionContent': '質問',
-      'aiAnswer': null,
+      'status': 20,
+      'aiAnswer': '先生の確認前の草稿',
       'teacherAnswer': null,
       'effectiveAnswer': null,
     });
@@ -41,7 +42,11 @@ void main() {
       'effectiveAnswer': 'AIの回答',
     });
 
-    expect(waiting.length, 1);
+    expect(waiting.map((message) => message.author), [
+      MessageAuthor.student,
+      MessageAuthor.ai,
+    ]);
+    expect(waiting.last.text, aiAnswerPendingTeacherMessage);
     expect(aiOnly.map((message) => message.author), [
       MessageAuthor.student,
       MessageAuthor.ai,
@@ -50,6 +55,32 @@ void main() {
       MessageAuthor.student,
       MessageAuthor.teacher,
     ]);
+  });
+
+  test('AI ask distinguishes a real answer from teacher review', () {
+    expect(
+      aiAskAnswerFromJson({
+        'status': 10,
+        'effectiveAnswer': 'AIの回答',
+      }),
+      'AIの回答',
+    );
+    expect(
+      aiAskAnswerFromJson({
+        'status': 10,
+        'effectiveAnswer': '',
+        'aiAnswer': 'AIの回答',
+      }),
+      'AIの回答',
+    );
+    expect(
+      aiAskAnswerFromJson({
+        'status': 20,
+        'effectiveAnswer': null,
+        'aiAnswer': null,
+      }),
+      aiAnswerPendingTeacherMessage,
+    );
   });
 
   test('chat websocket URL uses the server root without a fragment', () {

@@ -679,10 +679,7 @@ class ItClassApi {
       '/school/ai-tutor/ask',
       body: {'conversationId': conversationId, 'content': content},
     );
-    return _asString(
-      data['effectiveAnswer'] ?? data['aiAnswer'] ?? data['teacherAnswer'],
-      fallback: 'AI回答を取得しましたが、回答本文が空でした。',
-    );
+    return aiAskAnswerFromJson(data);
   }
 
   Future<ApiPage<TeacherRequest>> teacherAiQuestions({int? classroomId}) async {
@@ -1391,6 +1388,12 @@ Topic _topicFromAiConversationJson(Map<String, dynamic> json) {
 
 List<ChatMessage> chatMessagesFromAiQuestionJson(Map<String, dynamic> json) {
   final question = _asString(json['questionContent']);
+  if (_asInt(json['status']) == 20) {
+    return [
+      if (question.isNotEmpty) ChatMessage.student(question),
+      ChatMessage.ai(aiAnswerPendingTeacherMessage),
+    ];
+  }
   final aiAnswer = _asString(json['aiAnswer']);
   final teacherAnswer = _asString(json['teacherAnswer']);
   final legacyAnswer = _asString(json['effectiveAnswer']);
@@ -1401,6 +1404,21 @@ List<ChatMessage> chatMessagesFromAiQuestionJson(Map<String, dynamic> json) {
     if (aiAnswer.isEmpty && teacherAnswer.isEmpty && legacyAnswer.isNotEmpty)
       ChatMessage.ai(legacyAnswer),
   ];
+}
+
+const aiAnswerPendingTeacherMessage = '先生による確認が必要です。回答をお待ちください。';
+
+String aiAskAnswerFromJson(Map<String, dynamic> json) {
+  if (_asInt(json['status']) == 20) return aiAnswerPendingTeacherMessage;
+  for (final answer in [
+    json['effectiveAnswer'],
+    json['aiAnswer'],
+    json['teacherAnswer'],
+  ]) {
+    final text = _asString(answer);
+    if (text.trim().isNotEmpty) return text;
+  }
+  return 'AIの回答を取得できませんでした。時間をおいて再度お試しください。';
 }
 
 CodeAssignment _codeAssignmentFromJson(Map<String, dynamic> json) {

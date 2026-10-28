@@ -984,8 +984,7 @@ class _LearningWorkspace extends StatefulWidget {
     required this.onVideoProgressChanged,
     required this.onVideoPositionSaved,
     required this.mode,
-    required this.exams,
-    required this.onOpenExam,
+    required this.practiceQuestions,
   });
 
   final Lesson lesson;
@@ -1000,8 +999,7 @@ class _LearningWorkspace extends StatefulWidget {
   )
   onVideoPositionSaved;
   final LearningMode mode;
-  final List<SchoolExamSummary> exams;
-  final ValueChanged<int> onOpenExam;
+  final List<SchoolPracticeQuestion> practiceQuestions;
 
   @override
   State<_LearningWorkspace> createState() => _LearningWorkspaceState();
@@ -1023,10 +1021,7 @@ class _LearningWorkspaceState extends State<_LearningWorkspace> {
             onPositionSaved: widget.onVideoPositionSaved,
           )
         else if (widget.mode == LearningMode.questionBank)
-          _QuestionBankOutlineWorkspace(
-            exams: widget.exams,
-            onOpenExam: widget.onOpenExam,
-          )
+          _PracticeQuestionBankWorkspace(questions: widget.practiceQuestions)
         else ...[
           _SectionHeader(
             icon: Icons.menu_book_rounded,
@@ -1486,45 +1481,241 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
   }
 }
 
-class _QuestionBankOutlineWorkspace extends StatelessWidget {
-  const _QuestionBankOutlineWorkspace({
-    required this.exams,
-    required this.onOpenExam,
-  });
+class _PracticeQuestionBankWorkspace extends StatefulWidget {
+  const _PracticeQuestionBankWorkspace({required this.questions});
 
-  final List<SchoolExamSummary> exams;
-  final ValueChanged<int> onOpenExam;
+  final List<SchoolPracticeQuestion> questions;
+
+  @override
+  State<_PracticeQuestionBankWorkspace> createState() =>
+      _PracticeQuestionBankWorkspaceState();
+}
+
+class _PracticeQuestionBankWorkspaceState
+    extends State<_PracticeQuestionBankWorkspace> {
+  final Map<int, String> _selectedOptions = {};
+  final Set<int> _checkedQuestions = {};
+
+  @override
+  void didUpdateWidget(covariant _PracticeQuestionBankWorkspace oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldIds = oldWidget.questions.map((question) => question.id).toSet();
+    final newIds = widget.questions.map((question) => question.id).toSet();
+    if (oldIds.length != newIds.length || !oldIds.containsAll(newIds)) {
+      _selectedOptions.clear();
+      _checkedQuestions.clear();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final questions = widget.questions;
+    final checkedCount = questions
+        .where((question) => _checkedQuestions.contains(question.id))
+        .length;
+    final correctCount = questions.where((question) {
+      return _checkedQuestions.contains(question.id) &&
+          _selectedOptions[question.id] == question.correctOption;
+    }).length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _SectionHeader(
+        _SectionHeader(
           icon: Icons.account_tree_rounded,
           title: '問題バンク',
-          subtitle: 'バックエンドで公開されているテスト問題を確認します。',
+          subtitle: questions.isEmpty
+              ? '各コースの学習内容に対応した練習問題です。'
+              : '第${questions.first.chapterNo}課 · ${questions.first.lessonTitle} · $checkedCount/${questions.length}問確認済み',
         ),
         const SizedBox(height: 16),
-        if (exams.isEmpty)
+        if (questions.isEmpty)
           const _InlineNotice(
             tone: _NoticeTone.warning,
             title: '問題データがありません',
-            message: '先生がテストを公開すると、ここに表示されます。',
+            message: 'このコースの練習問題はまだ登録されていません。',
           ),
-        for (var i = 0; i < exams.length; i++)
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.quiz_outlined),
-              title: Text(exams[i].title),
-              subtitle: Text(
-                '${exams[i].isAvailable ? '受験可能' : '受付終了'} · ${exams[i].description}',
-              ),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: exams[i].isAvailable ? () => onOpenExam(i) : null,
-            ),
+        if (checkedCount == questions.length && questions.isNotEmpty) ...[
+          _InlineNotice(
+            tone: correctCount == questions.length
+                ? _NoticeTone.success
+                : _NoticeTone.warning,
+            title: 'この課の練習が完了しました',
+            message:
+                '$correctCount/${questions.length}問正解です。解析を確認してから次の課へ進みましょう。',
           ),
+          const SizedBox(height: 12),
+        ],
+        for (var i = 0; i < questions.length; i++) ...[
+          _PracticeQuestionCard(
+            number: i + 1,
+            question: questions[i],
+            selectedOption: _selectedOptions[questions[i].id],
+            checked: _checkedQuestions.contains(questions[i].id),
+            onOptionSelected: (option) {
+              setState(() {
+                _selectedOptions[questions[i].id] = option;
+                _checkedQuestions.remove(questions[i].id);
+              });
+            },
+            onCheck: _selectedOptions[questions[i].id] == null
+                ? null
+                : () => setState(() => _checkedQuestions.add(questions[i].id)),
+          ),
+          const SizedBox(height: 12),
+        ],
       ],
+    );
+  }
+}
+
+class _PracticeQuestionCard extends StatelessWidget {
+  const _PracticeQuestionCard({
+    required this.number,
+    required this.question,
+    required this.selectedOption,
+    required this.checked,
+    required this.onOptionSelected,
+    required this.onCheck,
+  });
+
+  final int number;
+  final SchoolPracticeQuestion question;
+  final String? selectedOption;
+  final bool checked;
+  final ValueChanged<String> onOptionSelected;
+  final VoidCallback? onCheck;
+
+  @override
+  Widget build(BuildContext context) {
+    final correct = checked && selectedOption == question.correctOption;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Chip(
+                  label: Text('第$number問'),
+                  backgroundColor: const Color(0xFFEFF6FF),
+                  side: const BorderSide(color: Color(0xFFBFDBFE)),
+                ),
+                Text(
+                  question.title,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              question.content,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 14),
+            for (final option in question.options) ...[
+              _PracticeOptionTile(
+                option: option,
+                selected: selectedOption == option.key,
+                checked: checked,
+                correctOption: question.correctOption,
+                onTap: () => onOptionSelected(option.key),
+              ),
+              const SizedBox(height: 8),
+            ],
+            const SizedBox(height: 6),
+            FilledButton.icon(
+              onPressed: onCheck,
+              icon: const Icon(Icons.check_circle_outline_rounded),
+              label: const Text('解答を確認'),
+            ),
+            if (checked) ...[
+              const SizedBox(height: 14),
+              _InlineNotice(
+                tone: correct ? _NoticeTone.success : _NoticeTone.warning,
+                title: correct ? '正解です' : 'もう一度確認しましょう',
+                message: '正解：${question.correctOption}\n${question.analysis}',
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PracticeOptionTile extends StatelessWidget {
+  const _PracticeOptionTile({
+    required this.option,
+    required this.selected,
+    required this.checked,
+    required this.correctOption,
+    required this.onTap,
+  });
+
+  final SchoolPracticeQuestionOption option;
+  final bool selected;
+  final bool checked;
+  final String correctOption;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isCorrect = checked && option.key == correctOption;
+    final isWrong = checked && selected && !isCorrect;
+    final borderColor = isCorrect
+        ? const Color(0xFF16A34A)
+        : isWrong
+        ? _AppPalette.coral
+        : selected
+        ? _AppPalette.teal
+        : _AppPalette.line;
+    final backgroundColor = isCorrect
+        ? const Color(0xFFF0FDF4)
+        : isWrong
+        ? const Color(0xFFFFF1F2)
+        : selected
+        ? const Color(0xFFF0FDFA)
+        : Colors.white;
+    return Material(
+      color: backgroundColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: borderColor),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Icon(
+                isCorrect
+                    ? Icons.check_circle_rounded
+                    : isWrong
+                    ? Icons.cancel_rounded
+                    : selected
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                color: borderColor,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                option.key,
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: Text(option.content)),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

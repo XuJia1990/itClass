@@ -129,6 +129,33 @@ void main() {
     expect(ItClassSession.current?.programmingLanguage, 'Python');
   });
 
+  test('practice question response keeps course and answer data', () {
+    final question = SchoolPracticeQuestion.fromJson({
+      'id': 11,
+      'classroomId': 1,
+      'courseVideoId': 4,
+      'chapterNo': 1,
+      'lessonTitle': 'Java入門 01',
+      'programmingLanguage': 'JAVA',
+      'title': 'JVMの役割',
+      'content': 'JVMは何を実行しますか？',
+      'options': [
+        {'key': 'A', 'content': 'PDF'},
+        {'key': 'B', 'content': 'バイトコード'},
+      ],
+      'correctOption': 'B',
+      'analysis': 'JVMはバイトコードを実行します。',
+      'difficulty': 1,
+      'sort': 2,
+    });
+
+    expect(question.chapterNo, 1);
+    expect(question.lessonTitle, 'Java入門 01');
+    expect(question.options.map((option) => option.key), ['A', 'B']);
+    expect(question.correctOption, 'B');
+    expect(question.analysis, contains('バイトコード'));
+  });
+
   void useDesktopViewport(WidgetTester tester) {
     tester.view.physicalSize = const Size(1280, 900);
     tester.view.devicePixelRatio = 1;

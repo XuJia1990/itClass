@@ -12,12 +12,14 @@ class _StudentHomePageState extends State<StudentHomePage> {
   LearningMode _learningMode = LearningMode.video;
   ProfileSettingSection _settingSection = ProfileSettingSection.profile;
   int _selectedLesson = 0;
+  int _selectedPracticeChapter = 0;
   int _selectedExamLesson = 0;
   int _selectedCodeAssignment = 0;
   String _selectedChatStudent = '';
   List<Topic> _apiTopics = const [];
   List<LearningVideo> _apiVideos = const [];
   List<Lesson> _apiLessons = const [];
+  List<SchoolPracticeQuestion> _apiPracticeQuestions = const [];
   List<SchoolExamSummary> _apiExams = const [];
   List<ExamQuestion> _apiExamQuestions = const [];
   List<StudentProfile> _chatContacts = const [];
@@ -49,6 +51,22 @@ class _StudentHomePageState extends State<StudentHomePage> {
   List<LearningVideo> get _videos => _apiVideos;
 
   List<Lesson> get _lessonsForLearning => _apiLessons;
+
+  List<_PracticeLessonGroup> get _practiceLessonGroups {
+    final groups = <int, List<SchoolPracticeQuestion>>{};
+    for (final question in _apiPracticeQuestions) {
+      groups.putIfAbsent(question.chapterNo, () => []).add(question);
+    }
+    final chapterNumbers = groups.keys.toList()..sort();
+    return [
+      for (final chapterNo in chapterNumbers)
+        _PracticeLessonGroup(
+          chapterNo: chapterNo,
+          title: groups[chapterNo]!.first.lessonTitle,
+          questions: groups[chapterNo]!,
+        ),
+    ];
+  }
 
   List<StudentProfile> get _teacherContacts => _chatContacts;
 
@@ -159,6 +177,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
                 setState(() {
                   _learningMode = mode;
                   _selectedLesson = 0;
+                  _selectedPracticeChapter = 0;
                 });
               },
             ),
@@ -204,22 +223,24 @@ class _StudentHomePageState extends State<StudentHomePage> {
                   detail: _lessonsForLearning[i].summary,
                   onTap: () => setState(() => _selectedLesson = i),
                 ),
-            if (_learningMode == LearningMode.questionBank && _apiExams.isEmpty)
+            if (_learningMode == LearningMode.questionBank &&
+                _practiceLessonGroups.isEmpty)
               const _InlineNotice(
                 tone: _NoticeTone.warning,
                 title: '問題データがありません',
-                message: 'バックエンドから公開済みテストが返っていません。',
+                message: 'バックエンドからコース練習問題が返っていません。',
               ),
             if (_learningMode == LearningMode.questionBank)
-              for (var i = 0; i < _apiExams.length; i++)
+              for (var i = 0; i < _practiceLessonGroups.length; i++)
                 _CompactListCard(
-                  selected: _selectedExamLesson == i,
-                  title: _apiExams[i].title,
-                  subtitle: _apiExams[i].latestScore == null
-                      ? (_apiExams[i].isAvailable ? '受験可能' : '受付終了')
-                      : '最新 ${_apiExams[i].latestScore}点',
-                  detail: _apiExams[i].description,
-                  onTap: () => setState(() => _selectedExamLesson = i),
+                  selected: _selectedPracticeChapter == i,
+                  title: _practiceLessonGroups[i].title,
+                  subtitle:
+                      '第${_practiceLessonGroups[i].chapterNo}課 · 練習問題 ${_practiceLessonGroups[i].questions.length}問',
+                  detail: _practiceLessonGroups[i].questions
+                      .map((question) => question.title)
+                      .join(' / '),
+                  onTap: () => setState(() => _selectedPracticeChapter = i),
                 ),
           ],
         );
@@ -338,6 +359,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
         );
       case StudentSection.learning:
         final lessons = _lessonsForLearning;
+        final practiceGroups = _practiceLessonGroups;
         if (_learningMode == LearningMode.document && lessons.isEmpty) {
           return const Center(
             child: _InlineNotice(
@@ -350,6 +372,13 @@ class _StudentHomePageState extends State<StudentHomePage> {
         final selectedLesson = lessons.isEmpty
             ? 0
             : _selectedLesson.clamp(0, lessons.length - 1);
+        final selectedPracticeQuestions = practiceGroups.isEmpty
+            ? const <SchoolPracticeQuestion>[]
+            : practiceGroups[_selectedPracticeChapter.clamp(
+                    0,
+                    practiceGroups.length - 1,
+                  )]
+                  .questions;
         return _LearningWorkspace(
           lesson: _learningMode != LearningMode.document
               ? _emptyLesson()
@@ -361,14 +390,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
           },
           onVideoPositionSaved: _saveVideoProgress,
           mode: _learningMode,
-          exams: _apiExams,
-          onOpenExam: (index) {
-            setState(() {
-              _selectedExamLesson = index;
-              _section = StudentSection.exam;
-            });
-            unawaited(_loadSelectedExam());
-          },
+          practiceQuestions: selectedPracticeQuestions,
         );
       case StudentSection.exam:
         final usingApi = _apiExams.isNotEmpty;
@@ -659,6 +681,9 @@ class _StudentHomePageState extends State<StudentHomePage> {
       final docs = await ItClassApi.instance.courseDocuments(
         classroomId: classroomId,
       );
+      final practiceQuestions = await ItClassApi.instance.practiceQuestions(
+        classroomId: classroomId,
+      );
       final exams = await ItClassApi.instance.examPage();
       final contacts = await ItClassApi.instance.chatContacts(
         classroomId: classroomId,
@@ -671,6 +696,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
         _apiTopics = topics.list;
         _apiVideos = videos.list;
         _apiLessons = docs.list;
+        _apiPracticeQuestions = practiceQuestions;
         _apiExams = exams.list;
         _chatContacts = contacts;
         _apiCodeAssignments = codeAssignments;
@@ -954,4 +980,16 @@ String _learningModeLabel(LearningMode mode) {
     case LearningMode.questionBank:
       return 'AI教室：問題バンク';
   }
+}
+
+class _PracticeLessonGroup {
+  const _PracticeLessonGroup({
+    required this.chapterNo,
+    required this.title,
+    required this.questions,
+  });
+
+  final int chapterNo;
+  final String title;
+  final List<SchoolPracticeQuestion> questions;
 }

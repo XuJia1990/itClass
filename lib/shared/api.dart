@@ -275,6 +275,75 @@ class SchoolExamSummary {
   }
 }
 
+class SchoolPracticeQuestionOption {
+  const SchoolPracticeQuestionOption({
+    required this.key,
+    required this.content,
+  });
+
+  factory SchoolPracticeQuestionOption.fromJson(Map<String, dynamic> json) {
+    return SchoolPracticeQuestionOption(
+      key: _asString(json['key']),
+      content: _asString(json['content']),
+    );
+  }
+
+  final String key;
+  final String content;
+}
+
+class SchoolPracticeQuestion {
+  const SchoolPracticeQuestion({
+    required this.id,
+    required this.classroomId,
+    required this.courseVideoId,
+    required this.chapterNo,
+    required this.lessonTitle,
+    required this.programmingLanguage,
+    required this.title,
+    required this.content,
+    required this.options,
+    required this.correctOption,
+    required this.analysis,
+    required this.difficulty,
+    required this.sort,
+  });
+
+  factory SchoolPracticeQuestion.fromJson(Map<String, dynamic> json) {
+    return SchoolPracticeQuestion(
+      id: _asInt(json['id']) ?? 0,
+      classroomId: _asInt(json['classroomId']) ?? 0,
+      courseVideoId: _asInt(json['courseVideoId']),
+      chapterNo: _asInt(json['chapterNo']) ?? 0,
+      lessonTitle: _asString(json['lessonTitle'], fallback: '練習問題'),
+      programmingLanguage: _asString(json['programmingLanguage']),
+      title: _asString(json['title'], fallback: '練習問題'),
+      content: _asString(json['content']),
+      options: _asList(json['options'])
+          .map((item) => SchoolPracticeQuestionOption.fromJson(_asMap(item)))
+          .toList(),
+      correctOption: _asString(json['correctOption']),
+      analysis: _asString(json['analysis']),
+      difficulty: _asInt(json['difficulty']) ?? 1,
+      sort: _asInt(json['sort']) ?? 0,
+    );
+  }
+
+  final int id;
+  final int classroomId;
+  final int? courseVideoId;
+  final int chapterNo;
+  final String lessonTitle;
+  final String programmingLanguage;
+  final String title;
+  final String content;
+  final List<SchoolPracticeQuestionOption> options;
+  final String correctOption;
+  final String analysis;
+  final int difficulty;
+  final int sort;
+}
+
 class ExamAttemptPayload {
   const ExamAttemptPayload({
     required this.attemptId,
@@ -422,6 +491,18 @@ class ItClassApi {
       },
     );
     return _page(data, _lessonFromDocumentJson);
+  }
+
+  Future<List<SchoolPracticeQuestion>> practiceQuestions({
+    int? classroomId,
+  }) async {
+    final data = await _get<List<dynamic>>(
+      '/school/practice-question/list',
+      query: {if (classroomId != null) 'classroomId': '$classroomId'},
+    );
+    return data
+        .map((item) => SchoolPracticeQuestion.fromJson(_asMap(item)))
+        .toList();
   }
 
   Future<int> createCourseVideo({

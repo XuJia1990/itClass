@@ -59,10 +59,7 @@ void main() {
 
   test('AI ask distinguishes a real answer from teacher review', () {
     expect(
-      aiAskAnswerFromJson({
-        'status': 10,
-        'effectiveAnswer': 'AIの回答',
-      }),
+      aiAskAnswerFromJson({'status': 10, 'effectiveAnswer': 'AIの回答'}),
       'AIの回答',
     );
     expect(
@@ -156,6 +153,18 @@ void main() {
     expect(question.analysis, contains('バイトコード'));
   });
 
+  test('classroom response keeps API language for the classroom selector', () {
+    final classroom = SchoolClassroom.fromJson({
+      'id': 7,
+      'name': 'Webアプリ開発クラス',
+      'programmingLanguage': 'PHP',
+    });
+
+    expect(classroom.id, 7);
+    expect(classroom.name, 'Webアプリ開発クラス');
+    expect(classroom.programmingLanguage, 'PHP');
+  });
+
   void useDesktopViewport(WidgetTester tester) {
     tester.view.physicalSize = const Size(1280, 900);
     tester.view.devicePixelRatio = 1;
@@ -208,6 +217,7 @@ void main() {
 
     expect(find.text('学生ログイン'), findsNothing);
     expect(find.text('AI教室：動画学習'), findsOneWidget);
+    expect(find.text('教室'), findsOneWidget);
 
     expect(find.text('先生ログイン'), findsNothing);
   });

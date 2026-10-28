@@ -17,6 +17,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
   int _selectedCodeAssignment = 0;
   String _selectedChatStudent = '';
   List<Topic> _apiTopics = const [];
+  List<SchoolClassroom> _apiClassrooms = const [];
   List<LearningVideo> _apiVideos = const [];
   List<Lesson> _apiLessons = const [];
   List<SchoolPracticeQuestion> _apiPracticeQuestions = const [];
@@ -25,6 +26,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
   List<StudentProfile> _chatContacts = const [];
   List<CodeAssignment> _apiCodeAssignments = const [];
   int? _selectedClassroomId;
+  int _classroomRequestId = 0;
   int? _selectedChatAccountId;
   int? _aiConversationId;
   int? _chatConversationId;
@@ -35,6 +37,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
   String _aiWelcomeMessage = '';
   String? _apiError;
   String? _examError;
+  bool _classroomLoading = false;
   final List<double> _videoProgress = [];
   final Map<String, int> _examAnswers = {};
   final Set<String> _submittedExamQuestions = {};
@@ -143,6 +146,55 @@ class _StudentHomePageState extends State<StudentHomePage> {
         return _HistoryPanel(
           title: _learningModeLabel(_learningMode),
           children: [
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text(
+                '教室',
+                style: TextStyle(
+                  color: _AppPalette.muted,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            if (_apiClassrooms.isEmpty)
+              const _InlineNotice(
+                tone: _NoticeTone.warning,
+                title: '所属教室がありません',
+                message: 'バックエンドで学生を教室に登録すると選択できます。',
+              )
+            else
+              DropdownButtonFormField<int>(
+                key: ValueKey(_selectedClassroomId),
+                initialValue: _selectedClassroomId,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.school_outlined),
+                ),
+                items: [
+                  for (final classroom in _apiClassrooms)
+                    DropdownMenuItem(
+                      value: classroom.id,
+                      child: Text(
+                        _classroomOptionLabel(classroom),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                ],
+                onChanged: _classroomLoading
+                    ? null
+                    : (classroomId) {
+                        if (classroomId == null ||
+                            classroomId == _selectedClassroomId) {
+                          return;
+                        }
+                        unawaited(_changeClassroom(classroomId));
+                      },
+              ),
+            if (_classroomLoading) ...[
+              const SizedBox(height: 8),
+              const LinearProgressIndicator(),
+            ],
+            const Divider(height: 24, color: _AppPalette.line),
             const Padding(
               padding: EdgeInsets.only(bottom: 8),
               child: Text(
@@ -691,6 +743,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
       final codeAssignments = await ItClassApi.instance.codeAssignments();
       if (!mounted) return;
       setState(() {
+        _apiClassrooms = classrooms;
         _selectedClassroomId = classroomId;
         _aiWelcomeMessage = aiWelcomeMessage;
         _apiTopics = topics.list;
@@ -718,6 +771,76 @@ class _StudentHomePageState extends State<StudentHomePage> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _apiError = 'APIデータ取得に失敗しました：$error');
+    }
+  }
+
+  Future<void> _changeClassroom(int classroomId) async {
+    final requestId = ++_classroomRequestId;
+    setState(() {
+      _selectedClassroomId = classroomId;
+      _classroomLoading = true;
+      _apiError = null;
+      _selectedLesson = 0;
+      _selectedPracticeChapter = 0;
+      _apiTopics = const [];
+      _apiVideos = const [];
+      _apiLessons = const [];
+      _apiPracticeQuestions = const [];
+      _chatContacts = const [];
+      _videoProgress.clear();
+    });
+    try {
+      final topics = await ItClassApi.instance.aiConversations(
+        classroomId: classroomId,
+      );
+      final aiWelcomeMessage = await ItClassApi.instance.aiTutorWelcomeMessage(
+        classroomId,
+      );
+      final videos = await ItClassApi.instance.courseVideos(
+        classroomId: classroomId,
+      );
+      final docs = await ItClassApi.instance.courseDocuments(
+        classroomId: classroomId,
+      );
+      final practiceQuestions = await ItClassApi.instance.practiceQuestions(
+        classroomId: classroomId,
+      );
+      final contacts = await ItClassApi.instance.chatContacts(
+        classroomId: classroomId,
+      );
+      if (!mounted || requestId != _classroomRequestId) return;
+      setState(() {
+        _aiWelcomeMessage = aiWelcomeMessage;
+        _apiTopics = topics.list;
+        _apiVideos = videos.list;
+        _apiLessons = docs.list;
+        _apiPracticeQuestions = practiceQuestions;
+        _chatContacts = contacts;
+        _aiConversationId = null;
+        _chatConversationId = null;
+        _selectedChatStudent = contacts.isEmpty ? '' : contacts.first.name;
+        _selectedChatAccountId = contacts.isEmpty
+            ? null
+            : contacts.first.accountId;
+        _videoProgress
+          ..clear()
+          ..addAll(videos.list.map((video) => video.progress));
+        _aiMessages
+          ..clear()
+          ..addAll(
+            aiWelcomeMessage.isEmpty
+                ? const <ChatMessage>[]
+                : [ChatMessage.ai(aiWelcomeMessage)],
+          );
+        _teacherMessages.clear();
+      });
+    } catch (error) {
+      if (!mounted || requestId != _classroomRequestId) return;
+      setState(() => _apiError = '教室データ取得に失敗しました：$error');
+    } finally {
+      if (mounted && requestId == _classroomRequestId) {
+        setState(() => _classroomLoading = false);
+      }
     }
   }
 
@@ -980,6 +1103,16 @@ String _learningModeLabel(LearningMode mode) {
     case LearningMode.questionBank:
       return 'AI教室：問題バンク';
   }
+}
+
+String _classroomOptionLabel(SchoolClassroom classroom) {
+  final language = classroom.programmingLanguage.trim();
+  if (language.isEmpty) return classroom.name;
+  final languageLabel = language.toUpperCase();
+  if (classroom.name.toUpperCase().contains(languageLabel)) {
+    return classroom.name;
+  }
+  return '$languageLabel教室 · ${classroom.name}';
 }
 
 class _PracticeLessonGroup {

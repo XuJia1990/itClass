@@ -644,17 +644,14 @@ class _MessageBubble extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              SizedBox(
-                width: 48,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 13),
-                  child: Text(
-                    isTeacher ? '先生' : 'AI',
-                    style: const TextStyle(
-                      color: _AppPalette.muted,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
+              Padding(
+                padding: const EdgeInsets.only(top: 13, right: 8),
+                child: Text(
+                  isTeacher ? '先生' : 'AI',
+                  style: const TextStyle(
+                    color: _AppPalette.muted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),

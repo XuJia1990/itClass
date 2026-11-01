@@ -1207,6 +1207,8 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
   int _lastUiSecond = -1;
   bool _endedSaved = false;
   bool _savingPosition = false;
+  bool _isFullscreen = false;
+  int _playerSurfaceVersion = 0;
 
   @override
   void dispose() {
@@ -1437,10 +1439,15 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
         children: [
           AspectRatio(
             aspectRatio: controller.value.aspectRatio,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: VideoPlayer(controller),
-            ),
+            child: _isFullscreen
+                ? const ColoredBox(color: Color(0xFF111827))
+                : ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: KeyedSubtree(
+                      key: ValueKey(_playerSurfaceVersion),
+                      child: VideoPlayer(controller),
+                    ),
+                  ),
           ),
           const SizedBox(height: 10),
           Row(
@@ -1489,26 +1496,42 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
 
   Future<void> _openFullscreen() async {
     final controller = _controller;
-    if (controller == null || !controller.value.isInitialized) return;
+    if (controller == null ||
+        !controller.value.isInitialized ||
+        _isFullscreen) {
+      return;
+    }
 
-    await Navigator.of(context).push<void>(
-      PageRouteBuilder<void>(
-        opaque: true,
-        fullscreenDialog: true,
-        transitionDuration: const Duration(milliseconds: 180),
-        reverseTransitionDuration: const Duration(milliseconds: 140),
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            _FullscreenVideoPlayer(
-              controller: controller,
-              title: widget.video.title,
-            ),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-            FadeTransition(opacity: animation, child: child),
-      ),
-    );
+    setState(() => _isFullscreen = true);
+    await WidgetsBinding.instance.endOfFrame;
+
+    try {
+      if (!mounted) return;
+      await Navigator.of(context).push<void>(
+        PageRouteBuilder<void>(
+          opaque: true,
+          fullscreenDialog: true,
+          transitionDuration: const Duration(milliseconds: 180),
+          reverseTransitionDuration: const Duration(milliseconds: 140),
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              _FullscreenVideoPlayer(
+                controller: controller,
+                title: widget.video.title,
+              ),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+              FadeTransition(opacity: animation, child: child),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isFullscreen = false;
+          _playerSurfaceVersion++;
+        });
+      }
+    }
 
     await _saveCurrentPosition();
-    if (mounted) setState(() {});
   }
 }
 

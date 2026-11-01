@@ -612,38 +612,55 @@ class _MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final isStudent = message.author == MessageAuthor.student;
     final isTeacher = message.author == MessageAuthor.teacher;
+    final bubble = Container(
+      constraints: const BoxConstraints(maxWidth: 680),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isStudent
+            ? _AppPalette.wash
+            : isTeacher
+            ? _AppPalette.washBlue
+            : Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _AppPalette.line),
+      ),
+      child: Text(message.text, style: const TextStyle(height: 1.5)),
+    );
 
-    return Align(
-      alignment: isStudent ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 680),
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: isStudent
-              ? _AppPalette.wash
-              : isTeacher
-              ? _AppPalette.washBlue
-              : Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: _AppPalette.line),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (!isStudent) ...[
-              Text(
-                isTeacher ? '先生' : 'AI',
-                style: const TextStyle(
-                  color: _AppPalette.muted,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+    if (isStudent) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Align(alignment: Alignment.centerRight, child: bubble),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 740),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 48,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 13),
+                  child: Text(
+                    isTeacher ? '先生' : 'AI',
+                    style: const TextStyle(
+                      color: _AppPalette.muted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
               ),
-              const SizedBox(height: 4),
+              Flexible(child: bubble),
             ],
-            Text(message.text, style: const TextStyle(height: 1.5)),
-          ],
+          ),
         ),
       ),
     );

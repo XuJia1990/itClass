@@ -795,6 +795,20 @@ class ItClassApi {
         .toList();
   }
 
+  Future<List<ChatConversationSummary>> chatConversations({
+    int? classroomId,
+  }) async {
+    final data = await _get<Map<String, dynamic>>(
+      '/school/chat/conversation/page',
+      query: {
+        'pageNo': '1',
+        'pageSize': '100',
+        if (classroomId != null) 'classroomId': '$classroomId',
+      },
+    );
+    return _page(data, _chatConversationSummaryFromJson).list;
+  }
+
   Future<int> getOrCreateChat({
     required int classroomId,
     required int peerAccountId,
@@ -1415,6 +1429,20 @@ ChatMessage _chatMessageFromJson(Map<String, dynamic> json) {
     _asString(json['content'] ?? json['fileName']),
     id: _asInt(json['id']),
     conversationId: _asInt(json['conversationId']),
+  );
+}
+
+ChatConversationSummary _chatConversationSummaryFromJson(
+  Map<String, dynamic> json,
+) {
+  return ChatConversationSummary(
+    id: _asInt(json['id']) ?? 0,
+    classroomId: _asInt(json['classroomId']) ?? 0,
+    peerAccountId: _asInt(json['peerAccountId']) ?? 0,
+    lastMessageId: _asInt(json['lastMessageId']),
+    lastMessageContent: _asString(json['lastMessageContent']),
+    lastMessageTime: _asDateTime(json['lastMessageTime']),
+    unreadCount: _asInt(json['unreadCount']) ?? 0,
   );
 }
 

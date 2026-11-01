@@ -321,6 +321,9 @@ class StudentProfile {
     this.accountId,
     this.classroomId,
     this.accountNo,
+    this.conversationId,
+    this.unreadCount = 0,
+    this.lastMessageTime,
     required this.email,
     required this.phone,
   });
@@ -328,11 +331,89 @@ class StudentProfile {
   final int? accountId;
   final int? classroomId;
   final String? accountNo;
+  final int? conversationId;
+  final int unreadCount;
+  final DateTime? lastMessageTime;
   final String name;
   final String status;
   final String lastQuestion;
   final String email;
   final String phone;
+
+  StudentProfile copyWith({
+    String? lastQuestion,
+    int? conversationId,
+    int? unreadCount,
+    DateTime? lastMessageTime,
+  }) {
+    return StudentProfile(
+      name,
+      status,
+      lastQuestion ?? this.lastQuestion,
+      accountId: accountId,
+      classroomId: classroomId,
+      accountNo: accountNo,
+      conversationId: conversationId ?? this.conversationId,
+      unreadCount: unreadCount ?? this.unreadCount,
+      lastMessageTime: lastMessageTime ?? this.lastMessageTime,
+      email: email,
+      phone: phone,
+    );
+  }
+}
+
+class ChatConversationSummary {
+  const ChatConversationSummary({
+    required this.id,
+    required this.classroomId,
+    required this.peerAccountId,
+    required this.lastMessageId,
+    required this.lastMessageContent,
+    required this.lastMessageTime,
+    required this.unreadCount,
+  });
+
+  final int id;
+  final int classroomId;
+  final int peerAccountId;
+  final int? lastMessageId;
+  final String lastMessageContent;
+  final DateTime? lastMessageTime;
+  final int unreadCount;
+}
+
+List<StudentProfile> mergeChatContactsWithConversations(
+  List<StudentProfile> contacts,
+  List<ChatConversationSummary> conversations,
+) {
+  final conversationByContact = <String, ChatConversationSummary>{
+    for (final conversation in conversations)
+      '${conversation.classroomId}:${conversation.peerAccountId}': conversation,
+  };
+  final merged = contacts.map((contact) {
+    final conversation =
+        conversationByContact['${contact.classroomId}:${contact.accountId}'];
+    if (conversation == null) return contact;
+    return contact.copyWith(
+      lastQuestion: conversation.lastMessageContent.isEmpty
+          ? contact.lastQuestion
+          : conversation.lastMessageContent,
+      conversationId: conversation.id,
+      unreadCount: conversation.unreadCount,
+      lastMessageTime: conversation.lastMessageId == null
+          ? null
+          : conversation.lastMessageTime,
+    );
+  }).toList();
+  merged.sort((left, right) {
+    final leftTime = left.lastMessageTime;
+    final rightTime = right.lastMessageTime;
+    if (leftTime == null && rightTime == null) return 0;
+    if (leftTime == null) return 1;
+    if (rightTime == null) return -1;
+    return rightTime.compareTo(leftTime);
+  });
+  return merged;
 }
 
 class ExamReport {

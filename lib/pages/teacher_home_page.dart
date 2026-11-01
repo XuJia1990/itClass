@@ -22,6 +22,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   List<CodeReviewItem> _codeReviewsFromApi = const [];
   bool _loading = false;
   String? _apiError;
+  StreamSubscription<ChatMessage>? _chatMessageSubscription;
 
   final List<TeacherRequest> _requests = [];
 
@@ -32,11 +33,15 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   @override
   void initState() {
     super.initState();
+    _chatMessageSubscription = SchoolChatRealtime.instance.messages.listen(
+      _handleRealtimeChatMessage,
+    );
     unawaited(_loadTeacherData());
   }
 
   @override
   void dispose() {
+    unawaited(_chatMessageSubscription?.cancel());
     _replyInput.dispose();
     super.dispose();
   }
@@ -108,7 +113,8 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
                 title: _teacherStudents[i].name,
                 subtitle: _teacherStudents[i].status,
                 detail: _teacherStudents[i].lastQuestion,
-                onTap: () => setState(() => _selectedStudent = i),
+                showNotificationDot: _teacherStudents[i].unreadCount > 0,
+                onTap: () => _selectChatStudent(i),
               ),
           ],
         );
@@ -323,24 +329,112 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
       final contacts = await ItClassApi.instance.chatContacts(
         classroomId: classroomId,
       );
+      final conversations = await ItClassApi.instance.chatConversations(
+        classroomId: classroomId,
+      );
       final codeReviews = await ItClassApi.instance.examAttempts();
       if (!mounted) return;
+      final selectedAccountId = _selectedStudentAccountId;
+      final chatStudents = mergeChatContactsWithConversations(
+        contacts,
+        conversations,
+      );
       setState(() {
         _classrooms = classrooms;
         _requests
           ..clear()
           ..addAll(questions.list);
         _selectedRequest = 0;
-        _studentsFromApi = contacts;
+        _studentsFromApi = chatStudents;
         _allStudentsFromApi = students;
         _codeReviewsFromApi = codeReviews.list;
-        _selectedStudent = 0;
+        _selectedStudent = _indexOfStudent(chatStudents, selectedAccountId);
       });
     } catch (error) {
       if (!mounted) return;
       setState(() => _apiError = 'APIデータ取得に失敗しました：$error');
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  int? get _selectedStudentAccountId {
+    if (_studentsFromApi.isEmpty) return null;
+    return _studentsFromApi[_selectedStudent.clamp(
+          0,
+          _studentsFromApi.length - 1,
+        )]
+        .accountId;
+  }
+
+  int _indexOfStudent(List<StudentProfile> students, int? accountId) {
+    if (students.isEmpty || accountId == null) return 0;
+    final index = students.indexWhere(
+      (student) => student.accountId == accountId,
+    );
+    return index < 0 ? 0 : index;
+  }
+
+  void _selectChatStudent(int index) {
+    setState(() {
+      _selectedStudent = index;
+      final student = _studentsFromApi[index];
+      if (student.unreadCount > 0) {
+        _studentsFromApi = List<StudentProfile>.of(_studentsFromApi)
+          ..[index] = student.copyWith(unreadCount: 0);
+      }
+    });
+  }
+
+  void _handleRealtimeChatMessage(ChatMessage message) {
+    if (!mounted || message.author != MessageAuthor.student) return;
+    final selectedAccountId = _selectedStudentAccountId;
+    final index = _studentsFromApi.indexWhere(
+      (student) => student.conversationId == message.conversationId,
+    );
+    if (index < 0) {
+      unawaited(_reloadChatStudents());
+      return;
+    }
+    final current = _studentsFromApi[index];
+    final isOpen =
+        _section == TeacherSection.studentMessages &&
+        current.accountId == selectedAccountId;
+    final updated = current.copyWith(
+      lastQuestion: message.text,
+      unreadCount: isOpen ? 0 : current.unreadCount + 1,
+      lastMessageTime: DateTime.now(),
+    );
+    final students = List<StudentProfile>.of(_studentsFromApi)
+      ..removeAt(index)
+      ..insert(0, updated);
+    setState(() {
+      _studentsFromApi = students;
+      _selectedStudent = _indexOfStudent(students, selectedAccountId);
+    });
+  }
+
+  Future<void> _reloadChatStudents() async {
+    try {
+      final classroomId = _classrooms.isEmpty ? null : _classrooms.first.id;
+      final contacts = await ItClassApi.instance.chatContacts(
+        classroomId: classroomId,
+      );
+      final conversations = await ItClassApi.instance.chatConversations(
+        classroomId: classroomId,
+      );
+      if (!mounted) return;
+      final selectedAccountId = _selectedStudentAccountId;
+      final students = mergeChatContactsWithConversations(
+        contacts,
+        conversations,
+      );
+      setState(() {
+        _studentsFromApi = students;
+        _selectedStudent = _indexOfStudent(students, selectedAccountId);
+      });
+    } catch (error) {
+      debugPrint('[itClass chat] contact refresh failed: $error');
     }
   }
 

@@ -90,6 +90,74 @@ void main() {
     expect(uri.path, isNot(contains('/app-api/')));
   });
 
+  test('chat contacts are ordered by latest message and keep unread state', () {
+    const contacts = [
+      StudentProfile(
+        '学生A',
+        'JAVA教室',
+        '会話履歴を開く',
+        accountId: 1,
+        classroomId: 10,
+        email: '',
+        phone: '',
+      ),
+      StudentProfile(
+        '学生B',
+        'JAVA教室',
+        '会話履歴を開く',
+        accountId: 2,
+        classroomId: 10,
+        email: '',
+        phone: '',
+      ),
+      StudentProfile(
+        '学生C',
+        'JAVA教室',
+        '会話履歴を開く',
+        accountId: 3,
+        classroomId: 10,
+        email: '',
+        phone: '',
+      ),
+    ];
+    final conversations = [
+      ChatConversationSummary(
+        id: 100,
+        classroomId: 10,
+        peerAccountId: 1,
+        lastMessageId: 1000,
+        lastMessageContent: '古いメッセージ',
+        lastMessageTime: DateTime(2026, 1, 1),
+        unreadCount: 0,
+      ),
+      ChatConversationSummary(
+        id: 200,
+        classroomId: 10,
+        peerAccountId: 2,
+        lastMessageId: 2000,
+        lastMessageContent: '新しいメッセージ',
+        lastMessageTime: DateTime(2026, 1, 2),
+        unreadCount: 2,
+      ),
+      ChatConversationSummary(
+        id: 300,
+        classroomId: 10,
+        peerAccountId: 3,
+        lastMessageId: null,
+        lastMessageContent: '',
+        lastMessageTime: DateTime(2026, 1, 3),
+        unreadCount: 0,
+      ),
+    ];
+
+    final result = mergeChatContactsWithConversations(contacts, conversations);
+
+    expect(result.map((student) => student.name), ['学生B', '学生A', '学生C']);
+    expect(result.first.lastQuestion, '新しいメッセージ');
+    expect(result.first.conversationId, 200);
+    expect(result.first.unreadCount, 2);
+  });
+
   AuthSession fakeSession(int accountType) {
     return AuthSession(
       userId: accountType,

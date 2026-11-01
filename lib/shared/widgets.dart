@@ -358,6 +358,7 @@ class _CompactListCard extends StatelessWidget {
     required this.onTap,
     this.selected = false,
     this.badge,
+    this.showNotificationDot = false,
   });
 
   final String title;
@@ -366,6 +367,7 @@ class _CompactListCard extends StatelessWidget {
   final VoidCallback onTap;
   final bool selected;
   final String? badge;
+  final bool showNotificationDot;
 
   @override
   Widget build(BuildContext context) {
@@ -421,6 +423,19 @@ class _CompactListCard extends StatelessWidget {
                                 ? const Color(0xFFC2410C)
                                 : const Color(0xFF047857),
                             fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    if (showNotificationDot)
+                      Semantics(
+                        label: '未読メッセージあり',
+                        child: Container(
+                          width: 10,
+                          height: 10,
+                          margin: const EdgeInsets.only(left: 8),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFEF4444),
+                            shape: BoxShape.circle,
                           ),
                         ),
                       ),

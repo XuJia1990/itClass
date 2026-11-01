@@ -1473,9 +1473,188 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
                   ),
                 ),
               ),
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: _openFullscreen,
+                tooltip: '全画面表示',
+                color: Colors.white,
+                icon: const Icon(Icons.fullscreen_rounded),
+              ),
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _openFullscreen() async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+
+    await Navigator.of(context).push<void>(
+      PageRouteBuilder<void>(
+        opaque: true,
+        fullscreenDialog: true,
+        transitionDuration: const Duration(milliseconds: 180),
+        reverseTransitionDuration: const Duration(milliseconds: 140),
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            _FullscreenVideoPlayer(
+              controller: controller,
+              title: widget.video.title,
+            ),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            FadeTransition(opacity: animation, child: child),
+      ),
+    );
+
+    await _saveCurrentPosition();
+    if (mounted) setState(() {});
+  }
+}
+
+class _FullscreenVideoPlayer extends StatefulWidget {
+  const _FullscreenVideoPlayer({required this.controller, required this.title});
+
+  final VideoPlayerController controller;
+  final String title;
+
+  @override
+  State<_FullscreenVideoPlayer> createState() => _FullscreenVideoPlayerState();
+}
+
+class _FullscreenVideoPlayerState extends State<_FullscreenVideoPlayer> {
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_refresh);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_refresh);
+    super.dispose();
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  String _formatDuration(Duration value) {
+    final hours = value.inHours;
+    final minutes = value.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = value.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return hours > 0 ? '$hours:$minutes:$seconds' : '$minutes:$seconds';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = widget.controller;
+    final value = controller.value;
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Center(
+                child: AspectRatio(
+                  aspectRatio: value.aspectRatio,
+                  child: VideoPlayer(controller),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 16,
+              top: 12,
+              right: 64,
+              child: Text(
+                widget.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  shadows: [Shadow(color: Colors.black, blurRadius: 6)],
+                ),
+              ),
+            ),
+            Positioned(
+              right: 12,
+              top: 4,
+              child: IconButton(
+                onPressed: () => Navigator.of(context).pop(),
+                tooltip: '全画面を終了',
+                color: Colors.white,
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ),
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 12,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: const Color(0xCC111827),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        onPressed: () async {
+                          if (value.isPlaying) {
+                            await controller.pause();
+                          } else {
+                            await controller.play();
+                          }
+                        },
+                        tooltip: value.isPlaying ? '一時停止' : '再生',
+                        color: Colors.white,
+                        icon: Icon(
+                          value.isPlaying
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
+                        ),
+                      ),
+                      Expanded(
+                        child: VideoProgressIndicator(
+                          controller,
+                          allowScrubbing: true,
+                          colors: const VideoProgressColors(
+                            playedColor: _AppPalette.teal,
+                            bufferedColor: Color(0xFF93C5FD),
+                            backgroundColor: Color(0xFF4B5563),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        '${_formatDuration(value.position)} / '
+                        '${_formatDuration(value.duration)}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        tooltip: '全画面を終了',
+                        color: Colors.white,
+                        icon: const Icon(Icons.fullscreen_exit_rounded),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

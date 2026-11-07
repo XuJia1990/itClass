@@ -72,7 +72,17 @@ class _ResponsiveShell extends StatelessWidget {
           backgroundColor: _AppPalette.canvas,
           appBar: AppBar(
             title: Text(title),
-            actions: topActions,
+            actions: [
+              ...topActions,
+              if (!tablet)
+                Builder(
+                  builder: (context) => IconButton(
+                    tooltip: '一覧・絞り込み',
+                    icon: const Icon(Icons.view_list_outlined),
+                    onPressed: () => Scaffold.of(context).openEndDrawer(),
+                  ),
+                ),
+            ],
             bottom: const PreferredSize(
               preferredSize: Size.fromHeight(1),
               child: Divider(height: 1, color: _AppPalette.line),
@@ -92,6 +102,28 @@ class _ResponsiveShell extends StatelessWidget {
               compact: true,
             ),
           ),
+          endDrawer: tablet
+              ? null
+              : Drawer(
+                  child: SafeArea(
+                    child: Column(
+                      children: [
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Builder(
+                            builder: (context) => IconButton(
+                              tooltip: '一覧を閉じる',
+                              icon: const Icon(Icons.close),
+                              onPressed: () =>
+                                  Scaffold.of(context).closeEndDrawer(),
+                            ),
+                          ),
+                        ),
+                        Expanded(child: middle),
+                      ],
+                    ),
+                  ),
+                ),
           body: tablet
               ? Row(
                   children: [
@@ -730,16 +762,25 @@ class _CodeScoringWorkspaceState extends State<_CodeScoringWorkspace> {
   }
 
   Future<void> _score() async {
-    setState(() => _scoring = true);
+    setState(() {
+      _scoring = true;
+      _result = null;
+    });
     try {
       final result = await widget.onScore();
       if (!mounted) return;
       setState(() => _result = result);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('採点に失敗しました：$error')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error is ApiException && error.code == 1004002046
+                ? 'この言語の自動採点は未対応です。テストから提出するか、担当の先生へ相談してください。'
+                : '採点に失敗しました：$error',
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _scoring = false);
     }
@@ -1109,16 +1150,46 @@ class _LearningWorkspaceState extends State<_LearningWorkspace> {
 
   Future<void> _openDocument(String url) async {
     try {
-      final uri = Uri.tryParse(url);
+      final lesson = widget.lesson;
+      final detail = lesson.id == null
+          ? lesson
+          : await ItClassApi.instance.courseDocument(lesson.id!);
+      if (!mounted) return;
+      final uri = Uri.tryParse(detail.documentUrl);
       if (uri == null || !uri.hasScheme) {
         throw const ApiException('教材URLが正しくありません。');
       }
-      final opened = await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
-        webOnlyWindowName: '_blank',
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(detail.title),
+          content: Text(detail.fileName),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('閉じる'),
+            ),
+            FilledButton.icon(
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('教材を開く'),
+              onPressed: () async {
+                final opened = await launchUrl(
+                  uri,
+                  mode: LaunchMode.externalApplication,
+                  webOnlyWindowName: '_blank',
+                );
+                if (!dialogContext.mounted) return;
+                Navigator.pop(dialogContext);
+                if (!opened && mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('ブラウザで教材を開けませんでした。')),
+                  );
+                }
+              },
+            ),
+          ],
+        ),
       );
-      if (!opened) throw const ApiException('ブラウザで教材を開けませんでした。');
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -1230,27 +1301,45 @@ class _VideoProgressCard extends StatefulWidget {
 
 class _VideoProgressCardState extends State<_VideoProgressCard> {
   VideoPlayerController? _controller;
+  LearningVideo? _loadedVideo;
+  int? _contentVersion;
+  double? _progress;
+  int _maxPositionSeconds = 0;
   bool _showPlayer = false;
   bool _loading = false;
   String? _error;
+  String? _saveError;
+  bool _reloadRequired = false;
+  bool _markingWatched = false;
+  bool _closingPlayer = false;
+  bool _disposing = false;
+  bool _hasPlaybackActivity = false;
+  int _loadGeneration = 0;
   int _lastUiSecond = -1;
+  int _lastReportedSecond = 0;
   bool _endedSaved = false;
-  bool _savingPosition = false;
+  Future<bool>? _saveInFlight;
   bool _isFullscreen = false;
+  PageRoute<void>? _fullscreenRoute;
   int _playerSurfaceVersion = 0;
 
   @override
   void dispose() {
+    _disposing = true;
     unawaited(_saveCurrentPosition());
     _controller?.removeListener(_handlePlaybackProgress);
     _controller?.dispose();
     super.dispose();
   }
 
+  double get _displayProgress => (_progress ?? widget.progress).clamp(0.0, 1.0);
+
+  bool get _busy => _loading || _markingWatched || _closingPlayer;
+
   @override
   Widget build(BuildContext context) {
-    final video = widget.video;
-    final percent = (widget.progress * 100).round();
+    final video = _loadedVideo ?? widget.video;
+    final percent = (_displayProgress * 100).round();
 
     return Card(
       child: Padding(
@@ -1299,7 +1388,7 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
             Row(
               children: [
                 Expanded(
-                  child: LinearProgressIndicator(value: widget.progress),
+                  child: LinearProgressIndicator(value: _displayProgress),
                 ),
                 const SizedBox(width: 12),
                 Text(
@@ -1309,6 +1398,29 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
               ],
             ),
             const SizedBox(height: 12),
+            if (_reloadRequired) ...[
+              const _InlineNotice(
+                tone: _NoticeTone.warning,
+                title: '動画が更新されました',
+                message:
+                    '再生を停止しました。最新の動画と学習進捗を再読み込みしてください。'
+                    '変更前の進捗は新しい動画に引き継がれません。',
+              ),
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                onPressed: _busy ? null : _initializePlayer,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('最新の動画を再読み込み'),
+              ),
+              const SizedBox(height: 12),
+            ] else if (_saveError != null) ...[
+              _InlineNotice(
+                tone: _NoticeTone.warning,
+                title: '進捗を保存できませんでした',
+                message: _saveError!,
+              ),
+              const SizedBox(height: 12),
+            ],
             if (_showPlayer) ...[
               _videoPlayerArea(),
               const SizedBox(height: 12),
@@ -1318,20 +1430,22 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
               runSpacing: 10,
               children: [
                 FilledButton.icon(
-                  onPressed: _togglePlayer,
+                  onPressed: _busy || _reloadRequired ? null : _togglePlayer,
                   icon: const Icon(Icons.play_circle_rounded),
                   label: Text(
                     _showPlayer
                         ? 'プレイヤーを閉じる'
-                        : widget.progress == 0
+                        : _displayProgress == 0
                         ? '視聴開始'
                         : '続きを見る',
                   ),
                 ),
                 OutlinedButton.icon(
-                  onPressed: widget.progress >= 1.0 ? null : _markWatched,
+                  onPressed: _busy || _reloadRequired || _displayProgress >= 1.0
+                      ? null
+                      : _markWatched,
                   icon: const Icon(Icons.check_circle_outline_rounded),
-                  label: Text(widget.progress >= 1.0 ? '視聴済み' : '視聴済みにする'),
+                  label: Text(_displayProgress >= 1.0 ? '視聴済み' : '視聴済みにする'),
                 ),
               ],
             ),
@@ -1342,76 +1456,206 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
   }
 
   Future<void> _togglePlayer() async {
+    if (_busy || _reloadRequired) return;
     if (_showPlayer) {
-      await _controller?.pause();
-      await _saveCurrentPosition();
-      if (!mounted) return;
-      setState(() => _showPlayer = false);
+      setState(() => _closingPlayer = true);
+      try {
+        await _controller?.pause();
+        await _saveCurrentPosition();
+        if (!mounted || _disposing) return;
+        setState(() => _showPlayer = false);
+      } finally {
+        if (mounted && !_disposing) setState(() => _closingPlayer = false);
+      }
       return;
     }
 
-    setState(() => _showPlayer = true);
-    if (_controller != null) return;
+    // Opening again refreshes the signed URL and the current file's progress.
     await _initializePlayer();
   }
 
   Future<void> _initializePlayer() async {
+    if (_busy || _disposing) return;
+    setState(() => _showPlayer = true);
+    await _prepareVideo(createPlayer: true);
+  }
+
+  Future<bool> _prepareVideo({required bool createPlayer}) async {
+    if (_loading || _disposing) return false;
     setState(() {
       _loading = true;
       _error = null;
+      _saveError = null;
     });
 
+    VideoPlayerController? initializingController;
     try {
-      final controller = VideoPlayerController.networkUrl(
-        Uri.parse(widget.video.videoUrl),
-      );
-      await controller.initialize();
-      await controller.setLooping(false);
-      if (widget.video.lastPositionSeconds > 0) {
-        await controller.seekTo(
-          Duration(seconds: widget.video.lastPositionSeconds),
+      // Let an already issued save settle before replacing its playback session.
+      await _saveInFlight;
+      if (!mounted || _disposing) return false;
+      _loadGeneration++;
+      final oldController = _controller;
+      _controller = null;
+      oldController?.removeListener(_handlePlaybackProgress);
+      await oldController?.dispose();
+      _loadedVideo = null;
+      _contentVersion = null;
+      _hasPlaybackActivity = false;
+      _endedSaved = false;
+
+      var video = widget.video;
+      var position = video.lastPositionSeconds;
+      var progress = video.progress;
+      var maxPosition = position;
+      final id = video.id;
+      if (id != null) {
+        final detail = await ItClassApi.instance.courseVideo(id);
+        final saved = await ItClassApi.instance.videoProgress(id);
+        // Progress has no contentVersion. Bracket it with detail reads so a
+        // replacement during these requests cannot mix two file versions.
+        video = await ItClassApi.instance.courseVideo(id);
+        if (!mounted || _disposing) return false;
+        if (detail.contentVersion != video.contentVersion) {
+          _requireReload();
+          return false;
+        }
+        position = _progressNumber(saved['lastPositionSeconds']).toInt();
+        maxPosition = _progressNumber(saved['maxPositionSeconds']).toInt();
+        progress = saved['completed'] == true
+            ? 1.0
+            : (_progressNumber(saved['progressPercent']) / 100).clamp(0.0, 1.0);
+      }
+      if (!mounted || _disposing) return false;
+      position = position < 0 ? 0 : position;
+      if (createPlayer) {
+        final controller = VideoPlayerController.networkUrl(
+          Uri.parse(video.videoUrl),
         );
+        initializingController = controller;
+        await controller.initialize();
+        await controller.setLooping(false);
+        final duration = controller.value.duration.inSeconds;
+        position = position.clamp(0, duration > 0 ? duration : 0);
+        if (position > 0) {
+          await controller.seekTo(Duration(seconds: position));
+        }
+        if (!mounted || _disposing) return false;
       }
-      controller.addListener(_handlePlaybackProgress);
-      if (!mounted) {
-        await controller.dispose();
-        return;
-      }
-      setState(() => _controller = controller);
+      setState(() {
+        _loadedVideo = video;
+        _contentVersion = video.contentVersion;
+        _maxPositionSeconds = maxPosition < 0 ? 0 : maxPosition;
+        _lastUiSecond = position;
+        _lastReportedSecond = position;
+        _reloadRequired = false;
+        _controller = initializingController;
+        _playerSurfaceVersion++;
+      });
+      _controller?.addListener(_handlePlaybackProgress);
+      initializingController = null;
+      // A zero-filled response is authoritative, even if the list said 100%.
+      _publishProgress(progress);
+      return true;
     } catch (error) {
-      if (!mounted) return;
-      setState(() => _error = '動画を読み込めませんでした：$error');
+      if (!mounted || _disposing) return false;
+      if (error is ApiException && error.code == 1004002045) {
+        _requireReload();
+      } else {
+        setState(() {
+          _showPlayer = true;
+          _error = '動画を読み込めませんでした：$error';
+        });
+      }
+      return false;
     } finally {
-      if (mounted) setState(() => _loading = false);
+      await initializingController?.dispose();
+      if (mounted && !_disposing) setState(() => _loading = false);
     }
   }
 
+  num _progressNumber(dynamic value) =>
+      value is num ? value : num.tryParse('$value') ?? 0;
+
+  void _publishProgress(double progress) {
+    if (!mounted || _disposing) return;
+    setState(() => _progress = progress.clamp(0.0, 1.0));
+    widget.onProgressChanged(_progress!);
+  }
+
+  void _requireReload() {
+    // Latch before pausing: pause emits controller notifications synchronously.
+    _reloadRequired = true;
+    _saveError = null;
+    final controller = _controller;
+    if (controller != null && !_disposing) unawaited(controller.pause());
+    if (!mounted || _disposing) return;
+    final route = _fullscreenRoute;
+    if (route != null && route.isActive) route.navigator?.removeRoute(route);
+    setState(() {});
+  }
+
   void _handlePlaybackProgress() {
+    if (_reloadRequired || _loading || _disposing || _markingWatched) return;
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
     final position = controller.value.position.inSeconds;
     final duration = controller.value.duration.inSeconds;
     if (duration <= 0) return;
     final ended = controller.value.isCompleted || position >= duration;
+    if (controller.value.isPlaying || position != _lastUiSecond) {
+      _hasPlaybackActivity = true;
+    }
     if (position != _lastUiSecond) {
       _lastUiSecond = position;
-      widget.onProgressChanged((position / duration).clamp(0.0, 1.0));
+      if (position > _maxPositionSeconds) _maxPositionSeconds = position;
+      final progress = (_maxPositionSeconds / duration).clamp(0.0, 1.0);
+      if (progress > _displayProgress) _publishProgress(progress);
       if (mounted) setState(() {});
     }
-    if (ended && !_endedSaved) {
+    if (ended && !_endedSaved && _saveError == null) {
+      _endedSaved = true;
       unawaited(_saveCurrentPosition(completed: true));
+    } else if (!ended &&
+        controller.value.isPlaying &&
+        _saveInFlight == null &&
+        _saveError == null &&
+        (position - _lastReportedSecond).abs() >= 15) {
+      _lastReportedSecond = position;
+      unawaited(_saveCurrentPosition());
     }
   }
 
-  void _markWatched() {
-    final duration =
-        _controller?.value.duration.inSeconds ?? widget.video.durationSeconds;
-    _endedSaved = true;
-    widget.onMarkWatched();
-    unawaited(_savePosition(duration, duration, true));
+  Future<void> _markWatched() async {
+    if (_busy || _reloadRequired || _disposing) return;
+    setState(() => _markingWatched = true);
+    try {
+      // Without an open player, the list's duration and version may be stale.
+      if (_controller == null && !await _prepareVideo(createPlayer: false)) {
+        return;
+      }
+      if (!mounted || _disposing || _reloadRequired) return;
+      await _controller?.pause();
+      final duration =
+          _controller?.value.duration.inSeconds ??
+          _loadedVideo!.durationSeconds;
+      final saved = await _savePosition(duration, duration, true);
+      if (!saved || !mounted || _disposing || _reloadRequired) return;
+      _endedSaved = true;
+      _hasPlaybackActivity = false;
+      _publishProgress(1.0);
+      widget.onMarkWatched();
+    } finally {
+      if (mounted && !_disposing) setState(() => _markingWatched = false);
+    }
   }
 
   Future<void> _saveCurrentPosition({bool completed = false}) async {
+    if (_reloadRequired ||
+        _loading ||
+        _markingWatched ||
+        !_hasPlaybackActivity) {
+      return;
+    }
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
     final duration = controller.value.duration.inSeconds;
@@ -1419,19 +1663,69 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
     final position = controller.value.position.inSeconds.clamp(0, duration);
     final ended =
         completed || controller.value.isCompleted || position >= duration;
-    if (ended) _endedSaved = true;
     await _savePosition(position, duration, ended);
   }
 
-  Future<void> _savePosition(int position, int duration, bool ended) async {
-    if (_savingPosition) return;
-    _savingPosition = true;
+  Future<bool> _savePosition(int position, int duration, bool ended) async {
+    final generation = _loadGeneration;
+    final video = _loadedVideo;
+    final contentVersion = _contentVersion;
+    // Serialize saves so a pending autosave cannot swallow mark-complete.
+    while (_saveInFlight != null) {
+      await _saveInFlight;
+    }
+    if (_reloadRequired ||
+        _loading ||
+        generation != _loadGeneration ||
+        video == null ||
+        contentVersion == null) {
+      return false;
+    }
+    final request = _sendPosition(
+      video,
+      contentVersion,
+      position,
+      duration,
+      ended,
+    );
+    _saveInFlight = request;
     try {
-      await widget.onPositionSaved(position, duration, ended);
-    } catch (error) {
-      debugPrint('[itClass video] progress save failed: $error');
+      return await request;
     } finally {
-      _savingPosition = false;
+      if (identical(_saveInFlight, request)) _saveInFlight = null;
+    }
+  }
+
+  Future<bool> _sendPosition(
+    LearningVideo video,
+    int contentVersion,
+    int position,
+    int duration,
+    bool ended,
+  ) async {
+    try {
+      if (video.id == null) {
+        await widget.onPositionSaved(position, duration, ended);
+      } else {
+        // The legacy parent callback cannot carry a content version. Keep all
+        // persisted player/mark-complete saves on this versioned API path.
+        await ItClassApi.instance.saveVideoProgress(
+          courseVideoId: video.id!,
+          contentVersion: contentVersion,
+          positionSeconds: position,
+          durationSeconds: duration,
+          ended: ended,
+        );
+      }
+      if (mounted && !_disposing) setState(() => _saveError = null);
+      return true;
+    } catch (error) {
+      if (error is ApiException && error.code == 1004002045) {
+        _requireReload();
+      } else if (mounted && !_disposing) {
+        setState(() => _saveError = '通信状態を確認し、もう一度操作してください：$error');
+      }
+      return false;
     }
   }
 
@@ -1446,11 +1740,23 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
       );
     }
 
+    if (_reloadRequired) return const SizedBox.shrink();
+
     if (_error != null) {
-      return _InlineNotice(
-        tone: _NoticeTone.warning,
-        title: '動画エラー',
-        message: _error!,
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _InlineNotice(
+            tone: _NoticeTone.warning,
+            title: '動画エラー',
+            message: _error!,
+          ),
+          TextButton.icon(
+            onPressed: _busy ? null : _initializePlayer,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('再読み込み'),
+          ),
+        ],
       );
     }
 
@@ -1482,15 +1788,19 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
           Row(
             children: [
               IconButton.filled(
-                onPressed: () async {
-                  if (controller.value.isPlaying) {
-                    await controller.pause();
-                    await _saveCurrentPosition();
-                  } else {
-                    await controller.play();
-                  }
-                  if (mounted) setState(() {});
-                },
+                onPressed: _busy
+                    ? null
+                    : () async {
+                        if (_reloadRequired || _disposing) return;
+                        if (controller.value.isPlaying) {
+                          await controller.pause();
+                          await _saveCurrentPosition();
+                        } else {
+                          _endedSaved = false;
+                          await controller.play();
+                        }
+                        if (mounted) setState(() {});
+                      },
                 icon: Icon(
                   controller.value.isPlaying
                       ? Icons.pause_rounded
@@ -1501,7 +1811,7 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
               Expanded(
                 child: VideoProgressIndicator(
                   controller,
-                  allowScrubbing: true,
+                  allowScrubbing: !_busy,
                   colors: const VideoProgressColors(
                     playedColor: _AppPalette.teal,
                     bufferedColor: Color(0xFF93C5FD),
@@ -1511,7 +1821,7 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
               ),
               const SizedBox(width: 8),
               IconButton(
-                onPressed: _openFullscreen,
+                onPressed: _busy ? null : _openFullscreen,
                 tooltip: '全画面表示',
                 color: Colors.white,
                 icon: const Icon(Icons.fullscreen_rounded),
@@ -1527,6 +1837,9 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
     final controller = _controller;
     if (controller == null ||
         !controller.value.isInitialized ||
+        _busy ||
+        _reloadRequired ||
+        _disposing ||
         _isFullscreen) {
       return;
     }
@@ -1535,24 +1848,25 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
     await WidgetsBinding.instance.endOfFrame;
 
     try {
-      if (!mounted) return;
-      await Navigator.of(context).push<void>(
-        PageRouteBuilder<void>(
-          opaque: true,
-          fullscreenDialog: true,
-          transitionDuration: const Duration(milliseconds: 180),
-          reverseTransitionDuration: const Duration(milliseconds: 140),
-          pageBuilder: (context, animation, secondaryAnimation) =>
-              _FullscreenVideoPlayer(
-                controller: controller,
-                title: widget.video.title,
-              ),
-          transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-              FadeTransition(opacity: animation, child: child),
-        ),
+      if (!mounted || _disposing || _reloadRequired) return;
+      final route = PageRouteBuilder<void>(
+        opaque: true,
+        fullscreenDialog: true,
+        transitionDuration: const Duration(milliseconds: 180),
+        reverseTransitionDuration: const Duration(milliseconds: 140),
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            _FullscreenVideoPlayer(
+              controller: controller,
+              title: (_loadedVideo ?? widget.video).title,
+            ),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            FadeTransition(opacity: animation, child: child),
       );
+      _fullscreenRoute = route;
+      await Navigator.of(context).push<void>(route);
     } finally {
-      if (mounted) {
+      _fullscreenRoute = null;
+      if (mounted && !_disposing) {
         setState(() {
           _isFullscreen = false;
           _playerSurfaceVersion++;
@@ -1992,255 +2306,6 @@ class _LessonSectionCard extends StatelessWidget {
   }
 }
 
-class _ExamWorkspace extends StatelessWidget {
-  const _ExamWorkspace({
-    required this.lesson,
-    required this.questions,
-    required this.selectedAnswers,
-    required this.submittedIndexes,
-    required this.onSelect,
-    required this.onSubmit,
-    required this.result,
-  });
-
-  final Lesson lesson;
-  final List<ExamQuestion> questions;
-  final Map<int, int> selectedAnswers;
-  final Set<int> submittedIndexes;
-  final void Function(int questionIndex, int answerIndex) onSelect;
-  final ValueChanged<int> onSubmit;
-  final ExamResult? result;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(24),
-      children: [
-        _SectionHeader(
-          icon: Icons.quiz_rounded,
-          title: '${lesson.title}：テスト演習',
-          subtitle: 'AI教室の大綱から出題 · ${questions.length}問',
-        ),
-        const SizedBox(height: 16),
-        _ExamProgressCard(
-          questions: questions,
-          selectedAnswers: selectedAnswers,
-          submittedIndexes: submittedIndexes,
-          result: result,
-        ),
-        const SizedBox(height: 16),
-        for (
-          var questionIndex = 0;
-          questionIndex < questions.length;
-          questionIndex++
-        )
-          Padding(
-            padding: const EdgeInsets.only(bottom: 14),
-            child: _ExamQuestionCard(
-              number: questionIndex + 1,
-              question: questions[questionIndex],
-              selectedAnswer: selectedAnswers[questionIndex],
-              submitted: submittedIndexes.contains(questionIndex),
-              answerResult: result?.answerFor(
-                questions[questionIndex].paperQuestionId,
-              ),
-              onSelect: (answerIndex) => onSelect(questionIndex, answerIndex),
-              onSubmit: () => onSubmit(questionIndex),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _ExamProgressCard extends StatelessWidget {
-  const _ExamProgressCard({
-    required this.questions,
-    required this.selectedAnswers,
-    required this.submittedIndexes,
-    required this.result,
-  });
-
-  final List<ExamQuestion> questions;
-  final Map<int, int> selectedAnswers;
-  final Set<int> submittedIndexes;
-  final ExamResult? result;
-
-  @override
-  Widget build(BuildContext context) {
-    final total = questions.length;
-    final submitted = submittedIndexes.length;
-    final progress = total == 0 ? 0.0 : submitted / total;
-    final score = result?.totalScore.round();
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    '受けるべきテストの進捗',
-                    style: TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                ),
-                _StatusPill(
-                  submitted == total
-                      ? '完了'
-                      : submitted == 0
-                      ? '未開始'
-                      : '進行中',
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            LinearProgressIndicator(value: progress),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                _MetricPill('提出', '$submitted/$total問'),
-                _MetricPill('自動採点', score == null ? '未採点' : '$score点'),
-                _MetricPill('残り', '${total - submitted}問'),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MetricPill extends StatelessWidget {
-  const _MetricPill(this.label, this.value);
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: _AppPalette.wash,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: _AppPalette.line),
-      ),
-      child: Text(
-        '$label：$value',
-        style: const TextStyle(fontWeight: FontWeight.w800),
-      ),
-    );
-  }
-}
-
-class _ExamQuestionCard extends StatelessWidget {
-  const _ExamQuestionCard({
-    required this.number,
-    required this.question,
-    required this.selectedAnswer,
-    required this.submitted,
-    required this.onSelect,
-    required this.onSubmit,
-    required this.answerResult,
-  });
-
-  final int number;
-  final ExamQuestion question;
-  final int? selectedAnswer;
-  final bool submitted;
-  final ValueChanged<int> onSelect;
-  final VoidCallback onSubmit;
-  final ExamAnswerResult? answerResult;
-
-  @override
-  Widget build(BuildContext context) {
-    final isCorrect = answerResult?.correct;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Wrap(
-              spacing: 10,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                _StatusPill('第 $number 問'),
-                Text(
-                  question.topic,
-                  style: const TextStyle(
-                    color: _AppPalette.muted,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              question.question,
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 16),
-            for (var i = 0; i < question.options.length; i++)
-              _AnswerOptionTile(
-                label: question.options[i],
-                selected: selectedAnswer == i,
-                onTap: () => onSelect(i),
-              ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                FilledButton.icon(
-                  onPressed: selectedAnswer == null ? null : onSubmit,
-                  icon: const Icon(Icons.check_rounded),
-                  label: Text(submitted ? '再採点' : '回答を提出'),
-                ),
-                if (answerResult != null)
-                  _StatusPill(
-                    isCorrect == null
-                        ? '採点待ち'
-                        : isCorrect
-                        ? '正解'
-                        : '要復習',
-                  )
-                else if (submitted)
-                  const _StatusPill('保存済み'),
-              ],
-            ),
-            if (answerResult != null) ...[
-              const SizedBox(height: 12),
-              _InlineNotice(
-                tone: isCorrect == true
-                    ? _NoticeTone.success
-                    : _NoticeTone.warning,
-                title: isCorrect == true ? '正解' : '採点結果',
-                message: [
-                  if (answerResult!.analysis.isNotEmpty) answerResult!.analysis,
-                  if (answerResult!.referenceAnswer.isNotEmpty)
-                    '参考答案：${answerResult!.referenceAnswer}',
-                  '得点：${answerResult!.score.round()}点',
-                ].join('\n'),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 enum _NoticeTone { success, warning }
 
 class _StatusPill extends StatelessWidget {
@@ -2319,53 +2384,6 @@ class _InlineNotice extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _AnswerOptionTile extends StatelessWidget {
-  const _AnswerOptionTile({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: selected ? const Color(0xFFEFFAF5) : Colors.white,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: selected ? const Color(0xFF10B981) : _AppPalette.line,
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                selected
-                    ? Icons.radio_button_checked_rounded
-                    : Icons.radio_button_unchecked_rounded,
-                color: selected
-                    ? const Color(0xFF047857)
-                    : const Color(0xFF94A3B8),
-              ),
-              const SizedBox(width: 10),
-              Expanded(child: Text(label)),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -2483,9 +2501,10 @@ class _TeacherCodeReviewWorkspace extends StatelessWidget {
 }
 
 class _TeacherChatWorkspace extends StatefulWidget {
-  const _TeacherChatWorkspace({required this.student});
+  const _TeacherChatWorkspace({required this.student, required this.onRead});
 
   final StudentProfile student;
+  final ValueChanged<int> onRead;
 
   @override
   State<_TeacherChatWorkspace> createState() => _TeacherChatWorkspaceState();
@@ -2497,6 +2516,8 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
   StreamSubscription<ChatMessage>? _chatMessageSubscription;
   int? _conversationId;
   bool _loading = false;
+  bool _sending = false;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
@@ -2510,9 +2531,9 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
   @override
   void didUpdateWidget(covariant _TeacherChatWorkspace oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.student.accountId != widget.student.accountId ||
-        oldWidget.student.classroomId != widget.student.classroomId) {
+    if (oldWidget.student.conversationId != widget.student.conversationId) {
       _conversationId = null;
+      _controller.clear();
       unawaited(_loadConversation());
     }
   }
@@ -2560,9 +2581,9 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
         Align(
           alignment: Alignment.centerLeft,
           child: FilledButton.icon(
-            onPressed: _send,
+            onPressed: _loading || _sending ? null : _send,
             icon: const Icon(Icons.send_rounded),
-            label: const Text('返信を送信'),
+            label: Text(_sending ? '送信中…' : '返信を送信'),
           ),
         ),
       ],
@@ -2571,24 +2592,20 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
 
   Future<void> _send() async {
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || _loading || _sending) return;
+    setState(() => _sending = true);
     try {
       final student = widget.student;
-      if (student.accountId == null || student.classroomId == null) {
-        throw const ApiException('学生IDまたはクラスIDがありません。');
+      if (student.conversationId == null) {
+        throw const ApiException('会話を選択してください。');
       }
-      final conversationId =
-          _conversationId ??
-          await ItClassApi.instance.getOrCreateChat(
-            classroomId: student.classroomId!,
-            peerAccountId: student.accountId!,
-          );
+      final conversationId = student.conversationId!;
       _conversationId = conversationId;
       final message = await ItClassApi.instance.sendChatMessage(
         conversationId: conversationId,
         content: text,
       );
-      if (!mounted) return;
+      if (!mounted || widget.student.conversationId != conversationId) return;
       setState(() {
         _upsertMessage(message);
         _controller.clear();
@@ -2598,25 +2615,25 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('返信送信に失敗しました：$error')));
+    } finally {
+      if (mounted) setState(() => _sending = false);
     }
   }
 
   Future<void> _loadConversation() async {
+    final generation = ++_loadGeneration;
     setState(() {
       _loading = true;
       _messages.clear();
     });
     try {
       final student = widget.student;
-      if (student.accountId == null || student.classroomId == null) {
-        throw const ApiException('学生IDまたはクラスIDがありません。');
+      if (student.conversationId == null) {
+        throw const ApiException('会話を選択してください。');
       }
-      final conversationId = await ItClassApi.instance.getOrCreateChat(
-        classroomId: student.classroomId!,
-        peerAccountId: student.accountId!,
-      );
+      final conversationId = student.conversationId!;
       final messages = await ItClassApi.instance.chatMessages(conversationId);
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _conversationId = conversationId;
         _messages.addAll(messages);
@@ -2628,7 +2645,9 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
         context,
       ).showSnackBar(SnackBar(content: Text('会話履歴の取得に失敗しました：$error')));
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && generation == _loadGeneration) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -2636,12 +2655,7 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
     if (!mounted || message.conversationId != _conversationId) return;
     setState(() => _upsertMessage(message));
     if (message.author == MessageAuthor.student && message.id != null) {
-      unawaited(
-        ItClassApi.instance.readChatMessages(
-          conversationId: message.conversationId!,
-          messageId: message.id!,
-        ),
-      );
+      unawaited(_readThrough(message.conversationId!, message.id!));
     }
   }
 
@@ -2669,12 +2683,19 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
     final latestId = incoming
         .map((message) => message.id!)
         .reduce((left, right) => left > right ? left : right);
-    unawaited(
-      ItClassApi.instance.readChatMessages(
+    unawaited(_readThrough(conversationId, latestId));
+  }
+
+  Future<void> _readThrough(int conversationId, int messageId) async {
+    try {
+      await ItClassApi.instance.readChatMessages(
         conversationId: conversationId,
-        messageId: latestId,
-      ),
-    );
+        messageId: messageId,
+      );
+      if (mounted) widget.onRead(conversationId);
+    } catch (error) {
+      debugPrint('[itClass chat] read failed: $error');
+    }
   }
 }
 
@@ -2695,38 +2716,51 @@ class _LearningUploadWorkspace extends StatefulWidget {
 class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
   final _testTitleController = TextEditingController();
   final _testCategoryController = TextEditingController();
+  final _testLanguageController = TextEditingController();
+  final _durationController = TextEditingController(text: '0');
+  final _attemptsController = TextEditingController(text: '0');
   int _selectedTestLesson = 0;
   int _questionCount = 3;
   List<ExamQuestion> _draftQuestions = const [];
   List<Lesson> _availableLessons = const [];
+  Set<int> _teacherIds = _currentResponsibleTeacherIds();
   bool _loadingLessons = false;
   bool _generatingQuestions = false;
+  bool _savingTest = false;
   String? _lessonError;
+  String? _savedDraftSignature;
+  final List<int> _savedQuestionIds = [];
+  int? _savedPaperId;
+  int _assessmentRevision = 0;
 
   @override
   void initState() {
     super.initState();
-    unawaited(_loadAvailableLessons());
+    if (widget.type == UploadMaterialType.test) {
+      unawaited(_loadAvailableLessons());
+    }
   }
 
   @override
   void didUpdateWidget(covariant _LearningUploadWorkspace oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final oldClassroomId = oldWidget.classrooms.isEmpty
-        ? null
-        : oldWidget.classrooms.first.id;
-    final classroomId = widget.classrooms.isEmpty
-        ? null
-        : widget.classrooms.first.id;
-    if (oldClassroomId != classroomId) {
+    if (oldWidget.type != widget.type &&
+        widget.type == UploadMaterialType.test) {
       unawaited(_loadAvailableLessons());
     }
   }
 
   @override
   void dispose() {
-    _testTitleController.dispose();
-    _testCategoryController.dispose();
+    for (final controller in [
+      _testTitleController,
+      _testCategoryController,
+      _testLanguageController,
+      _durationController,
+      _attemptsController,
+    ]) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -2741,123 +2775,135 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
           subtitle: _uploadTypeSubtitle(widget.type),
         ),
         const SizedBox(height: 16),
-        if (widget.type == UploadMaterialType.video) ...[
-          _UploadDropZone(
-            icon: Icons.video_file_rounded,
-            title: '授業動画をアップロード',
-            subtitle: '先生が録画した授業を MP4 / MOV として登録し、学生の動画一覧と進捗管理に反映します。',
-            buttonLabel: '動画ファイルを選択',
-            allowedExtensions: const ['mp4', 'mov'],
-            fileType: FileType.custom,
-            onUpload: _uploadCourseMaterial,
-          ),
-          const SizedBox(height: 16),
-          const _InlineNotice(
-            tone: _NoticeTone.success,
-            title: 'アップロード先',
-            message: 'アップロード完了後、バックエンドの動画教材一覧から学生画面へ反映されます。',
-          ),
-        ] else if (widget.type == UploadMaterialType.pdf) ...[
-          _UploadDropZone(
-            icon: Icons.description_rounded,
-            title: '文書教材をアップロード',
-            subtitle: 'PDF / PPT / PPTX / DOC / DOCX を文書学習に登録します。',
-            buttonLabel: '教材ファイルを選択',
-            allowedExtensions: const ['pdf', 'ppt', 'pptx', 'doc', 'docx'],
-            fileType: FileType.custom,
-            onUpload: _uploadCourseMaterial,
-          ),
-          const SizedBox(height: 16),
-          const _InlineNotice(
-            tone: _NoticeTone.success,
-            title: 'アップロード先',
-            message: 'アップロード完了後、バックエンドの文書教材一覧から学生画面へ反映されます。',
-          ),
-        ] else ...[
+        if (widget.type != UploadMaterialType.test)
+          _TeacherMaterialManagement(
+            key: ValueKey(widget.type),
+            kind: widget.type == UploadMaterialType.video
+                ? _TeacherMaterialKind.video
+                : _TeacherMaterialKind.document,
+            classrooms: widget.classrooms,
+          )
+        else ...[
           if (_lessonError != null) ...[
             _InlineNotice(
               tone: _NoticeTone.warning,
               title: '教材取得エラー',
               message: _lessonError!,
             ),
-            const SizedBox(height: 16),
+            TextButton(
+              onPressed: _loadAvailableLessons,
+              child: const Text('教材を再取得'),
+            ),
           ],
-          if (_loadingLessons) ...[
-            const Center(child: CircularProgressIndicator()),
-            const SizedBox(height: 16),
-          ],
-          _TeacherTestUploadPanel(
-            titleController: _testTitleController,
-            categoryController: _testCategoryController,
-            lessons: _availableLessons,
-            selectedLessonIndex: _selectedTestLesson,
-            questionCount: _questionCount,
-            questions: _draftQuestions,
-            generating: _generatingQuestions,
-            onLessonChanged: (index) => setState(() {
-              _selectedTestLesson = index;
-              final lesson = _availableLessons[index];
-              _testTitleController.text = '${lesson.title} テスト';
-              _testCategoryController.text = lesson.level;
-            }),
-            onQuestionCountChanged: (count) =>
-                setState(() => _questionCount = count),
-            onGenerate: _generateDraftQuestions,
-            onAddQuestion: _addDraftQuestion,
-            onQuestionChanged: _updateDraftQuestion,
-            onDeleteQuestion: _deleteDraftQuestion,
-            onUpload: _uploadDraftTest,
+          if (_loadingLessons || _savingTest) const LinearProgressIndicator(),
+          AbsorbPointer(
+            absorbing: _savingTest || _generatingQuestions,
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text('保存完了後、すべての正常な学生が受験できます。'),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _testLanguageController,
+                      decoration: const InputDecoration(
+                        labelText: 'プログラミング言語（分類・任意）',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _durationController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: '制限時間（分）',
+                        helperText: '0 = 時間制限なし',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _attemptsController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: '受験可能回数',
+                        helperText: '0 = 回数制限なし',
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _ResponsibleTeacherPicker(
+                      selectedIds: _teacherIds,
+                      existingTeachers: _currentResponsibleTeachers(),
+                      enabled: !_savingTest,
+                      onChanged: (ids) => setState(() => _teacherIds = ids),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
-          const SizedBox(height: 16),
-          const _InlineNotice(
-            tone: _NoticeTone.success,
-            title: '公開先',
-            message: 'アップロードしたテストはバックエンドで公開され、学生のテスト一覧へ反映されます。',
+          AbsorbPointer(
+            absorbing: _savingTest,
+            child: _TeacherTestUploadPanel(
+              titleController: _testTitleController,
+              categoryController: _testCategoryController,
+              lessons: _availableLessons,
+              selectedLessonIndex: _selectedTestLesson,
+              questionCount: _questionCount,
+              questions: _draftQuestions,
+              generating: _generatingQuestions,
+              onLessonChanged: (index) => setState(() {
+                _selectedTestLesson = index;
+                final lesson = _availableLessons[index];
+                _testTitleController.text = '${lesson.title} テスト';
+                _testCategoryController.text = lesson.level;
+                _testLanguageController.text = lesson.level;
+              }),
+              onQuestionCountChanged: (count) =>
+                  setState(() => _questionCount = count),
+              onGenerate: _generateDraftQuestions,
+              onAddQuestion: _addDraftQuestion,
+              onQuestionChanged: _updateDraftQuestion,
+              onDeleteQuestion: _deleteDraftQuestion,
+              onUpload: _uploadDraftTest,
+            ),
           ),
+          if (_savingTest) const Text('問題・試験用紙・試験を保存中です…'),
+          const SizedBox(height: 24),
+          _TeacherAssessmentManagement(key: ValueKey(_assessmentRevision)),
         ],
       ],
     );
   }
 
   Future<void> _loadAvailableLessons() async {
-    if (widget.classrooms.isEmpty) {
-      setState(() {
-        _availableLessons = const [];
-        _lessonError = null;
-      });
-      return;
-    }
+    if (_loadingLessons) return;
     setState(() {
       _loadingLessons = true;
       _lessonError = null;
     });
     try {
-      final docs = await ItClassApi.instance.courseDocuments(
-        classroomId: widget.classrooms.first.id,
-      );
+      final docs = await ItClassApi.instance.courseDocuments();
       if (!mounted) return;
       setState(() {
         _availableLessons = docs.list;
         _selectedTestLesson = 0;
-        if (_availableLessons.isNotEmpty) {
+        if (_availableLessons.isNotEmpty && _testTitleController.text.isEmpty) {
           final lesson = _availableLessons.first;
           _testTitleController.text = '${lesson.title} テスト';
           _testCategoryController.text = lesson.level;
+          _testLanguageController.text = lesson.level;
         }
       });
     } catch (error) {
-      if (!mounted) return;
-      setState(() => _lessonError = 'バックエンド教材の取得に失敗しました：$error');
+      if (mounted) setState(() => _lessonError = '$error');
     } finally {
       if (mounted) setState(() => _loadingLessons = false);
     }
   }
 
   Future<void> _generateDraftQuestions() async {
-    if (_availableLessons.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('先にバックエンドへ教材を登録してください。')));
+    if (_availableLessons.isEmpty || _generatingQuestions || _savingTest) {
       return;
     }
     setState(() => _generatingQuestions = true);
@@ -2868,25 +2914,21 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
             _availableLessons.length - 1,
           )];
       final questions = await ItClassApi.instance.generateExamQuestions(
-        programmingLanguage: lesson.level,
+        programmingLanguage: _testLanguageController.text.trim(),
         topic: lesson.title,
         count: _questionCount,
       );
-      if (!mounted) return;
-      setState(() => _draftQuestions = questions);
+      if (mounted) setState(() => _draftQuestions = questions);
     } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('AI問題生成に失敗しました：$error')));
+      if (mounted) _notice('AI問題生成に失敗しました：$error');
     } finally {
       if (mounted) setState(() => _generatingQuestions = false);
     }
   }
 
   void _addDraftQuestion() {
-    setState(() {
-      _draftQuestions = [
+    setState(
+      () => _draftQuestions = [
         ..._draftQuestions,
         const ExamQuestion(
           topic: '',
@@ -2895,105 +2937,126 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
           answerIndex: 0,
           explanation: '',
         ),
-      ];
-    });
-  }
-
-  Future<void> _uploadCourseMaterial(PlatformFile file) async {
-    if (widget.classrooms.isEmpty) {
-      throw const ApiException('担当クラスがありません。先に后台でクラスを作成してください。');
-    }
-    final classroomId = widget.classrooms.first.id;
-    final url = await ItClassApi.instance.uploadFile(
-      file,
-      directory: widget.type == UploadMaterialType.video
-          ? 'course-video'
-          : 'course-document',
+      ],
     );
-    if (widget.type == UploadMaterialType.video) {
-      await ItClassApi.instance.createCourseVideo(
-        classroomId: classroomId,
-        title: file.name,
-        fileUrl: url,
-        file: file,
-      );
-    } else {
-      await ItClassApi.instance.createCourseDocument(
-        classroomId: classroomId,
-        title: file.name,
-        fileUrl: url,
-        file: file,
-      );
-    }
   }
 
   Future<void> _uploadDraftTest() async {
-    if (_draftQuestions.isEmpty) {
-      await _generateDraftQuestions();
-    }
-    if (!mounted) return;
-    if (_draftQuestions.isEmpty) return;
-    if (widget.classrooms.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('担当クラスがありません。')));
+    if (_savingTest || _generatingQuestions || _draftQuestions.isEmpty) return;
+    final title = _testTitleController.text.trim();
+    final duration = int.tryParse(_durationController.text.trim());
+    final attempts = int.tryParse(_attemptsController.text.trim());
+    if (duration == null || duration < 0 || attempts == null || attempts < 0) {
+      _notice('制限時間と受験回数は0以上の整数を入力してください。0は無制限です。');
       return;
     }
-    final title = _testTitleController.text.trim();
+    if (_teacherIds.isEmpty) {
+      _notice('担当講師を1名以上選択してください。');
+      return;
+    }
     if (title.isEmpty ||
         _draftQuestions.any(
           (question) =>
               question.question.trim().isEmpty ||
               question.options.length < 2 ||
-              question.options.any((option) => option.trim().isEmpty),
+              question.options.any((option) => option.trim().isEmpty) ||
+              question.answerIndex < 0 ||
+              question.answerIndex >= question.options.length,
         )) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('テスト名、問題文、すべての選択肢を入力してください。')),
-      );
+      _notice('テスト名、問題文、すべての選択肢と正解を入力してください。');
       return;
     }
-    if (_availableLessons.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('先にバックエンドへ教材を登録してください。')));
+    final language = _testLanguageController.text.trim();
+    if (language.length > 64) {
+      _notice('プログラミング言語は64文字以内で入力してください。');
       return;
     }
+    // Reuse completed stages after a later stage fails, provided the draft has
+    // not changed. Saving never retries automatically or creates a second exam.
+    final signature = jsonEncode([
+      title,
+      _testCategoryController.text.trim(),
+      language,
+      duration,
+      attempts,
+      _teacherIds.toList()..sort(),
+      for (final question in _draftQuestions)
+        [
+          question.topic,
+          question.question,
+          question.options,
+          question.answerIndex,
+          question.explanation,
+        ],
+    ]);
+    if (signature != _savedDraftSignature) {
+      _savedDraftSignature = signature;
+      _savedQuestionIds.clear();
+      _savedPaperId = null;
+    }
+    setState(() => _savingTest = true);
     try {
-      final lesson =
-          _availableLessons[_selectedTestLesson.clamp(
-            0,
-            _availableLessons.length - 1,
-          )];
-      final questionIds = <int>[];
-      for (final question in _draftQuestions) {
-        questionIds.add(
-          await ItClassApi.instance.createQuestion(
-            question,
-            programmingLanguage: lesson.level,
+      for (var i = _savedQuestionIds.length; i < _draftQuestions.length; i++) {
+        final question = _draftQuestions[i];
+        final id = await ItClassApi.instance.createQuestion(
+          ExamQuestion(
+            topic: question.topic.trim().isEmpty
+                ? '$title 第${i + 1}問'
+                : question.topic,
+            question: question.question,
+            options: question.options,
+            answerIndex: question.answerIndex,
+            explanation: question.explanation,
+            type: questionTypeSingleChoice,
+            score: 10,
           ),
+          programmingLanguage: language,
+          teacherAccountIds: _teacherIds.toList(),
         );
+        if (id <= 0) throw const ApiException('問題の保存結果を確認できませんでした。');
+        _savedQuestionIds.add(id);
       }
-      final paperId = await ItClassApi.instance.createPaper(
+      _savedPaperId ??= await ItClassApi.instance.createPaper(
         title: title,
         description: _testCategoryController.text.trim(),
-        questionIds: questionIds,
+        questionIds: _savedQuestionIds,
+        teacherAccountIds: _teacherIds.toList(),
+        durationMinutes: duration,
       );
-      await ItClassApi.instance.createAndPublishExam(
-        classroomId: widget.classrooms.first.id,
-        paperId: paperId,
+      if (_savedPaperId! <= 0) {
+        _savedPaperId = null;
+        throw const ApiException('試験用紙の保存結果を確認できませんでした。');
+      }
+      final examId = await ItClassApi.instance.createAndPublishExam(
+        paperId: _savedPaperId!,
         title: title,
         description: _testCategoryController.text.trim(),
+        durationMinutes: duration,
+        maxAttempts: attempts,
+        passScore: _draftQuestions.length * 6,
+        teacherAccountIds: _teacherIds.toList(),
       );
+      if (examId <= 0) throw const ApiException('試験の保存結果を確認できませんでした。');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('テストをアップロードしました。学生のテスト一覧に反映されます。')),
-      );
+      setState(() {
+        _draftQuestions = const [];
+        _assessmentRevision++;
+        _savedDraftSignature = null;
+        _savedQuestionIds.clear();
+        _savedPaperId = null;
+      });
+      _notice('テストを保存しました。学生はすぐに受験できます。');
     } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('テストアップロードに失敗しました：$error')));
+      if (mounted) _notice('テスト保存に失敗しました：$error');
+    } finally {
+      if (mounted) setState(() => _savingTest = false);
     }
+  }
+
+  void _notice(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _updateDraftQuestion(int index, ExamQuestion question) {
@@ -3005,10 +3068,11 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
   }
 
   void _deleteDraftQuestion(int index) {
-    setState(() {
-      final updated = List<ExamQuestion>.of(_draftQuestions)..removeAt(index);
-      _draftQuestions = updated;
-    });
+    setState(
+      () =>
+          _draftQuestions = List<ExamQuestion>.of(_draftQuestions)
+            ..removeAt(index),
+    );
   }
 }
 
@@ -3026,22 +3090,22 @@ IconData _uploadTypeIcon(UploadMaterialType type) {
 String _uploadTypeTitle(UploadMaterialType type) {
   switch (type) {
     case UploadMaterialType.video:
-      return '動画アップロード';
+      return '共有動画管理';
     case UploadMaterialType.pdf:
-      return '文書教材アップロード';
+      return '共有文書教材管理';
     case UploadMaterialType.test:
-      return 'テストアップロード';
+      return '共有テスト管理';
   }
 }
 
 String _uploadTypeSubtitle(UploadMaterialType type) {
   switch (type) {
     case UploadMaterialType.video:
-      return '授業録画だけをアップロードし、学生の動画学習と進捗管理に反映します。';
+      return '授業動画の登録・共有編集・公開状態を管理します。教室の指定は任意です。';
     case UploadMaterialType.pdf:
-      return 'PDF、PowerPoint、Word をアップロードし、学生の文書学習に反映します。';
+      return 'PDF、PowerPoint、Word の登録・共有編集・公開状態を管理します。';
     case UploadMaterialType.test:
-      return '選択問題テストだけをAI生成・先生確認・編集してからアップロードします。';
+      return '問題を作成・確認して保存すると、学生はすぐに受験できます。';
   }
 }
 
@@ -3062,7 +3126,7 @@ class _UploadDropZone extends StatefulWidget {
   final String buttonLabel;
   final List<String> allowedExtensions;
   final FileType fileType;
-  final Future<void> Function(PlatformFile file) onUpload;
+  final Future<bool> Function(PlatformFile file) onUpload;
 
   @override
   State<_UploadDropZone> createState() => _UploadDropZoneState();
@@ -3107,7 +3171,7 @@ class _UploadDropZoneState extends State<_UploadDropZone> {
                   ),
                   const SizedBox(height: 16),
                   FilledButton.icon(
-                    onPressed: _pickFile,
+                    onPressed: _uploading ? null : _pickFile,
                     icon: const Icon(Icons.upload_file_rounded),
                     label: Text(widget.buttonLabel),
                   ),
@@ -3149,11 +3213,11 @@ class _UploadDropZoneState extends State<_UploadDropZone> {
 
   Future<void> _uploadSelectedFile() async {
     final file = _selectedFile;
-    if (file == null) return;
+    if (file == null || _uploading) return;
     setState(() => _uploading = true);
     try {
-      await widget.onUpload(file);
-      if (!mounted) return;
+      final saved = await widget.onUpload(file);
+      if (!mounted || !saved) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('${file.name} をアップロードしました。')));
@@ -3294,7 +3358,7 @@ class _TeacherTestUploadPanel extends StatelessWidget {
                                   lessons.length - 1,
                                 ),
                           decoration: const InputDecoration(
-                            labelText: '出題内容',
+                            labelText: 'AI生成の参考教材（任意）',
                             prefixIcon: Icon(Icons.menu_book_rounded),
                           ),
                           items: [
@@ -3347,7 +3411,7 @@ class _TeacherTestUploadPanel extends StatelessWidget {
               const _InlineNotice(
                 tone: _NoticeTone.warning,
                 title: '教材データがありません',
-                message: 'テスト生成には、先にバックエンドへPDF教材を登録してください。',
+                message: '手動で問題を追加して保存できます。AI生成には参考教材を選択してください。',
               )
             else
               _InlineNotice(
@@ -3411,7 +3475,7 @@ class _TeacherTestUploadPanel extends StatelessWidget {
                 child: FilledButton.icon(
                   onPressed: onUpload,
                   icon: const Icon(Icons.cloud_upload_rounded),
-                  label: const Text('確認済みテストをアップロード'),
+                  label: const Text('確認済みテストを保存'),
                 ),
               ),
             ],
@@ -3562,6 +3626,7 @@ class _UserRoleManagementWorkspaceState
   late List<StudentProfile> _managedStudents;
   late Set<int> _assignedStudentIds;
   int? _existingStudentId;
+  bool _creatingStudent = false;
 
   List<StudentProfile> get _availableStudents => _managedStudents
       .where(
@@ -3647,7 +3712,7 @@ class _UserRoleManagementWorkspaceState
             ),
             const SizedBox(height: 6),
             const Text(
-              '学生アカウントと初期パスワードを入力します。保存後、全学生一覧に表示されます。',
+              '教室や言語の指定は不要です。作成後、全学生一覧に表示され、公共教材を利用できます。',
               style: TextStyle(color: _AppPalette.muted),
             ),
             const SizedBox(height: 14),
@@ -3703,9 +3768,9 @@ class _UserRoleManagementWorkspaceState
             ),
             const SizedBox(height: 14),
             FilledButton.icon(
-              onPressed: _createStudent,
+              onPressed: _creatingStudent ? null : _createStudent,
               icon: const Icon(Icons.person_add_alt_1_rounded),
-              label: const Text('学生アカウントを作成'),
+              label: Text(_creatingStudent ? '作成中' : '学生アカウントを作成'),
             ),
           ],
         ),
@@ -3795,48 +3860,53 @@ class _UserRoleManagementWorkspaceState
   }
 
   Future<void> _createStudent() async {
+    if (_creatingStudent) return;
     final name = _nameController.text.trim();
     final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
+    final password = _passwordController.text;
     final phone = _phoneController.text.trim();
     if (name.isEmpty || email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('学生名、账号、初期密码を入力してください。')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('学生名、メール、初期パスワードを入力してください。')),
+      );
       return;
     }
+    setState(() => _creatingStudent = true);
     try {
-      if (widget.classrooms.isNotEmpty) {
-        final student = await ItClassApi.instance.createStudent(
-          classroomId: widget.classrooms.first.id,
-          programmingLanguage: widget.classrooms.first.programmingLanguage,
-          realName: name,
-          username: email,
-          password: password,
-          mobile: phone,
-        );
-        if (!mounted) return;
-        setState(() {
-          _managedStudents.add(student);
-          if (student.accountId != null) {
-            _assignedStudentIds.add(student.accountId!);
-          }
-        });
+      final student = await ItClassApi.instance.createStudent(
+        realName: name,
+        username: email,
+        password: password,
+        mobile: phone,
+      );
+      if (!mounted) return;
+      setState(() {
+        _managedStudents.add(student);
+        _nameController.clear();
+        _emailController.clear();
+        _passwordController.clear();
+        _phoneController.clear();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('学生アカウント ${student.accountNo ?? ''} を作成しました。')),
+      );
+      try {
         await widget.onChanged();
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('学生アカウント ${student.accountNo ?? ''} を作成しました。'),
-          ),
-        );
-      } else {
-        throw const ApiException('担当クラスがありません。');
+      } catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('作成は完了しましたが一覧を更新できませんでした：$error')),
+          );
+        }
       }
     } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('学生作成に失敗しました：$error')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('学生作成に失敗しました：$error')));
+      }
+    } finally {
+      if (mounted) setState(() => _creatingStudent = false);
     }
   }
 

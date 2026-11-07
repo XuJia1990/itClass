@@ -18,6 +18,7 @@ part 'pages/teacher_home_page.dart';
 part 'shared/widgets.dart';
 part 'shared/models.dart';
 part 'shared/api.dart';
+part 'shared/teacher_resources.dart';
 part 'shared/mock_data.dart';
 
 void main() {

@@ -104,8 +104,8 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
             if (_teacherStudents.isEmpty)
               const _InlineNotice(
                 tone: _NoticeTone.warning,
-                title: '学生データがありません',
-                message: 'バックエンドに担当学生が登録されていません。',
+                title: '会話はありません',
+                message: '学生からの相談はここに表示されます。',
               ),
             for (var i = 0; i < _teacherStudents.length; i++)
               _CompactListCard(
@@ -131,8 +131,8 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
             ),
             _CompactListCard(
               title: '学習資料アップロード',
-              subtitle: '${_classrooms.length}クラス',
-              detail: '担当クラスに動画、文書教材、テストを登録します。',
+              subtitle: '共通教材',
+              detail: '動画、文書教材、テスト',
               onTap: () => setState(() => _section = TeacherSection.relearning),
             ),
           ],
@@ -177,13 +177,13 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         );
       case TeacherSection.relearning:
         return _HistoryPanel(
-          title: 'アップロード機能',
+          title: '教材管理',
           children: [
             _CompactListCard(
               selected: _uploadType == UploadMaterialType.video,
               title: '動画アップロード',
-              subtitle: '授業録画',
-              detail: '先生が録画した授業動画だけをアップロードします。',
+              subtitle: '共通の授業動画',
+              detail: '登録・編集・担当講師',
               onTap: () =>
                   setState(() => _uploadType = UploadMaterialType.video),
             ),
@@ -241,11 +241,23 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
             child: _InlineNotice(
               tone: _NoticeTone.warning,
               title: '学生データがありません',
-              message: 'バックエンドに担当学生が登録されていません。',
+              message: '学生からの相談はここに表示されます。',
             ),
           );
         }
         return _TeacherChatWorkspace(
+          onRead: (conversationId) {
+            if (!mounted) return;
+            setState(
+              () => _studentsFromApi = _studentsFromApi
+                  .map(
+                    (student) => student.conversationId == conversationId
+                        ? student.copyWith(unreadCount: 0)
+                        : student,
+                  )
+                  .toList(),
+            );
+          },
           student:
               _teacherStudents[_selectedStudent.clamp(
                 0,
@@ -315,62 +327,75 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   }
 
   Future<void> _loadTeacherData() async {
+    if (_loading) return;
     setState(() {
       _loading = true;
       _apiError = null;
     });
-    try {
-      final classrooms = await ItClassApi.instance.myClassrooms();
-      final classroomId = classrooms.isNotEmpty ? classrooms.first.id : null;
-      final questions = await ItClassApi.instance.teacherAiQuestions(
-        classroomId: classroomId,
-      );
-      final students = await ItClassApi.instance.simpleStudents();
-      final contacts = await ItClassApi.instance.chatContacts(
-        classroomId: classroomId,
-      );
-      final conversations = await ItClassApi.instance.chatConversations(
-        classroomId: classroomId,
-      );
-      final codeReviews = await ItClassApi.instance.examAttempts();
-      if (!mounted) return;
-      final selectedAccountId = _selectedStudentAccountId;
-      final chatStudents = mergeChatContactsWithConversations(
-        contacts,
-        conversations,
-      );
-      setState(() {
-        _classrooms = classrooms;
+    final errors = <String>[];
+    Future<void> load<T>(
+      String label,
+      Future<T> Function() fetch,
+      void Function(T) apply,
+    ) async {
+      try {
+        final data = await fetch();
+        if (mounted) setState(() => apply(data));
+      } catch (error) {
+        errors.add('$label：$error');
+      }
+    }
+
+    await Future.wait([
+      load(
+        '教室',
+        ItClassApi.instance.myClassrooms,
+        (value) => _classrooms = value,
+      ),
+      load('AI質問', () => ItClassApi.instance.teacherAiQuestions(), (value) {
         _requests
           ..clear()
-          ..addAll(questions.list);
+          ..addAll(value.list);
         _selectedRequest = 0;
-        _studentsFromApi = chatStudents;
-        _allStudentsFromApi = students;
-        _codeReviewsFromApi = codeReviews.list;
-        _selectedStudent = _indexOfStudent(chatStudents, selectedAccountId);
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _apiError = 'APIデータ取得に失敗しました：$error');
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+      }),
+      load(
+        '学生',
+        ItClassApi.instance.simpleStudents,
+        (value) => _allStudentsFromApi = value,
+      ),
+      load('会話', () => ItClassApi.instance.chatContacts(), (value) {
+        final selected = _selectedChatConversationId;
+        _studentsFromApi = value;
+        _selectedStudent = _indexOfConversation(value, selected);
+      }),
+      load(
+        '成績',
+        ItClassApi.instance.examAttempts,
+        (value) => _codeReviewsFromApi = value.list,
+      ),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      _apiError = errors.isEmpty
+          ? null
+          : '一部のデータを読み込めませんでした。\n${errors.join('\n')}';
+    });
   }
 
-  int? get _selectedStudentAccountId {
+  int? get _selectedChatConversationId {
     if (_studentsFromApi.isEmpty) return null;
     return _studentsFromApi[_selectedStudent.clamp(
           0,
           _studentsFromApi.length - 1,
         )]
-        .accountId;
+        .conversationId;
   }
 
-  int _indexOfStudent(List<StudentProfile> students, int? accountId) {
-    if (students.isEmpty || accountId == null) return 0;
+  int _indexOfConversation(List<StudentProfile> students, int? conversationId) {
+    if (students.isEmpty || conversationId == null) return 0;
     final index = students.indexWhere(
-      (student) => student.accountId == accountId,
+      (student) => student.conversationId == conversationId,
     );
     return index < 0 ? 0 : index;
   }
@@ -378,17 +403,12 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   void _selectChatStudent(int index) {
     setState(() {
       _selectedStudent = index;
-      final student = _studentsFromApi[index];
-      if (student.unreadCount > 0) {
-        _studentsFromApi = List<StudentProfile>.of(_studentsFromApi)
-          ..[index] = student.copyWith(unreadCount: 0);
-      }
     });
   }
 
   void _handleRealtimeChatMessage(ChatMessage message) {
     if (!mounted || message.author != MessageAuthor.student) return;
-    final selectedAccountId = _selectedStudentAccountId;
+    final selectedConversationId = _selectedChatConversationId;
     final index = _studentsFromApi.indexWhere(
       (student) => student.conversationId == message.conversationId,
     );
@@ -397,12 +417,9 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
       return;
     }
     final current = _studentsFromApi[index];
-    final isOpen =
-        _section == TeacherSection.studentMessages &&
-        current.accountId == selectedAccountId;
     final updated = current.copyWith(
       lastQuestion: message.text,
-      unreadCount: isOpen ? 0 : current.unreadCount + 1,
+      unreadCount: current.unreadCount + 1,
       lastMessageTime: DateTime.now(),
     );
     final students = List<StudentProfile>.of(_studentsFromApi)
@@ -410,28 +427,22 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
       ..insert(0, updated);
     setState(() {
       _studentsFromApi = students;
-      _selectedStudent = _indexOfStudent(students, selectedAccountId);
+      _selectedStudent = _indexOfConversation(students, selectedConversationId);
     });
   }
 
   Future<void> _reloadChatStudents() async {
     try {
-      final classroomId = _classrooms.isEmpty ? null : _classrooms.first.id;
-      final contacts = await ItClassApi.instance.chatContacts(
-        classroomId: classroomId,
-      );
-      final conversations = await ItClassApi.instance.chatConversations(
-        classroomId: classroomId,
-      );
+      final contacts = await ItClassApi.instance.chatContacts();
       if (!mounted) return;
-      final selectedAccountId = _selectedStudentAccountId;
-      final students = mergeChatContactsWithConversations(
-        contacts,
-        conversations,
-      );
+      final selectedConversationId = _selectedChatConversationId;
+      final students = contacts;
       setState(() {
         _studentsFromApi = students;
-        _selectedStudent = _indexOfStudent(students, selectedAccountId);
+        _selectedStudent = _indexOfConversation(
+          students,
+          selectedConversationId,
+        );
       });
     } catch (error) {
       debugPrint('[itClass chat] contact refresh failed: $error');

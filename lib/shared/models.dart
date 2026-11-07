@@ -31,6 +31,29 @@ class ChatMessage {
 
 enum MessageAuthor { student, ai, teacher }
 
+class ResourceTeacher {
+  const ResourceTeacher({
+    required this.accountId,
+    required this.realName,
+    this.accountNo = '',
+    this.avatar = '',
+    this.status = 0,
+  });
+  factory ResourceTeacher.fromJson(Map<String, dynamic> json) =>
+      ResourceTeacher(
+        accountId: _asInt(json['accountId'] ?? json['id']) ?? 0,
+        realName: _asString(json['realName']),
+        accountNo: _asString(json['accountNo']),
+        avatar: _asString(json['avatar']),
+        status: _asInt(json['status']) ?? 0,
+      );
+  final int accountId;
+  final String realName;
+  final String accountNo;
+  final String avatar;
+  final int status;
+}
+
 class Topic {
   const Topic(this.title, this.category, this.question, this.answer, {this.id});
 
@@ -55,6 +78,7 @@ class Lesson {
     required this.aiSummary,
     this.documentUrl = '',
     this.fileName = '',
+    this.teachers = const [],
   });
 
   final int? id;
@@ -69,6 +93,7 @@ class Lesson {
   final String aiSummary;
   final String documentUrl;
   final String fileName;
+  final List<ResourceTeacher> teachers;
 }
 
 class LessonSection {
@@ -113,6 +138,8 @@ class LearningVideo {
     required this.videoUrl,
     this.durationSeconds = 0,
     this.lastPositionSeconds = 0,
+    this.contentVersion = 0,
+    this.teachers = const [],
   });
 
   final int? id;
@@ -125,6 +152,8 @@ class LearningVideo {
   final String videoUrl;
   final int durationSeconds;
   final int lastPositionSeconds;
+  final int contentVersion;
+  final List<ResourceTeacher> teachers;
 }
 
 class ExamResult {
@@ -196,6 +225,7 @@ class ExamQuestion {
     this.type,
     this.optionKeys,
     this.score,
+    this.savedAnswer = '',
     required this.topic,
     required this.question,
     required this.options,
@@ -208,6 +238,7 @@ class ExamQuestion {
   final int? type;
   final List<String>? optionKeys;
   final int? score;
+  final String savedAnswer;
   final String topic;
   final String question;
   final List<String> options;
@@ -324,6 +355,9 @@ class StudentProfile {
     this.conversationId,
     this.unreadCount = 0,
     this.lastMessageTime,
+    this.resourceType,
+    this.resourceId,
+    this.resourceName = '',
     required this.email,
     required this.phone,
   });
@@ -334,6 +368,9 @@ class StudentProfile {
   final int? conversationId;
   final int unreadCount;
   final DateTime? lastMessageTime;
+  final String? resourceType;
+  final int? resourceId;
+  final String resourceName;
   final String name;
   final String status;
   final String lastQuestion;
@@ -356,6 +393,9 @@ class StudentProfile {
       conversationId: conversationId ?? this.conversationId,
       unreadCount: unreadCount ?? this.unreadCount,
       lastMessageTime: lastMessageTime ?? this.lastMessageTime,
+      resourceType: resourceType,
+      resourceId: resourceId,
+      resourceName: resourceName,
       email: email,
       phone: phone,
     );

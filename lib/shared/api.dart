@@ -89,12 +89,23 @@ class AuthSession {
 }
 
 class ApiException implements Exception {
-  const ApiException(this.message);
+  const ApiException(this.message, {this.code});
 
   final String message;
+  final int? code;
 
   @override
   String toString() => message;
+}
+
+class AiTutorConfig {
+  const AiTutorConfig({
+    required this.welcomeMessage,
+    required this.autoAnswerEnabled,
+  });
+
+  final String welcomeMessage;
+  final bool autoAnswerEnabled;
 }
 
 class SchoolChatRealtime {
@@ -243,6 +254,10 @@ class SchoolExamSummary {
     required this.status,
     required this.startTime,
     required this.endTime,
+    this.alwaysAvailable = true,
+    this.durationMinutes = 0,
+    this.maxAttempts = 0,
+    this.teachers = const [],
   });
 
   factory SchoolExamSummary.fromJson(Map<String, dynamic> json) {
@@ -255,6 +270,12 @@ class SchoolExamSummary {
       status: _asInt(json['status']) ?? 0,
       startTime: _asDateTime(json['startTime']),
       endTime: _asDateTime(json['endTime']),
+      alwaysAvailable: json['alwaysAvailable'] != false,
+      durationMinutes: _asInt(json['durationMinutes']) ?? 0,
+      maxAttempts: _asInt(json['maxAttempts']) ?? 0,
+      teachers: _asList(
+        json['teachers'],
+      ).map((e) => ResourceTeacher.fromJson(_asMap(e))).toList(),
     );
   }
 
@@ -266,12 +287,13 @@ class SchoolExamSummary {
   final int status;
   final DateTime? startTime;
   final DateTime? endTime;
+  final bool alwaysAvailable;
+  final int durationMinutes;
+  final int maxAttempts;
+  final List<ResourceTeacher> teachers;
 
   bool get isAvailable {
-    final now = DateTime.now();
-    return status == 10 &&
-        (startTime == null || !now.isBefore(startTime!)) &&
-        (endTime == null || now.isBefore(endTime!));
+    return status == 10;
   }
 }
 
@@ -349,12 +371,14 @@ class ExamAttemptPayload {
     required this.attemptId,
     required this.examTitle,
     required this.questions,
+    this.deadlineTime,
   });
 
   factory ExamAttemptPayload.fromJson(Map<String, dynamic> json) {
     return ExamAttemptPayload(
       attemptId: _asInt(json['attemptId']) ?? 0,
       examTitle: _asString(json['examTitle'], fallback: 'Exam'),
+      deadlineTime: _asDateTime(json['deadlineTime']),
       questions: _asList(
         json['questions'],
       ).map((item) => _examQuestionFromJson(_asMap(item))).toList(),
@@ -364,12 +388,20 @@ class ExamAttemptPayload {
   final int attemptId;
   final String examTitle;
   final List<ExamQuestion> questions;
+  final DateTime? deadlineTime;
 }
 
 class ItClassApi {
-  ItClassApi._();
+  ItClassApi._() : _client = http.Client();
 
-  static final ItClassApi instance = ItClassApi._();
+  @visibleForTesting
+  ItClassApi.forTesting(this._client);
+
+  static ItClassApi _instance = ItClassApi._();
+  static ItClassApi get instance => _instance;
+
+  @visibleForTesting
+  static set instance(ItClassApi api) => _instance = api;
 
   static final String baseUrl = _resolveApiBaseUrl();
   static const String tenantId = String.fromEnvironment(
@@ -377,7 +409,7 @@ class ItClassApi {
     defaultValue: '1',
   );
 
-  final http.Client _client = http.Client();
+  final http.Client _client;
 
   Future<AuthSession> accountLogin({
     required String account,
@@ -385,7 +417,7 @@ class ItClassApi {
   }) async {
     final data = await _post<Map<String, dynamic>>(
       '/member/auth/account-login',
-      body: {'accountNo': account, 'password': password},
+      body: {'username': account, 'password': password},
     );
     final session = AuthSession.fromJson(data);
     ItClassSession.current = session;
@@ -452,20 +484,25 @@ class ItClassApi {
     return data.map((item) => SchoolClassroom.fromJson(_asMap(item))).toList();
   }
 
-  Future<ApiPage<LearningVideo>> courseVideos({int? classroomId}) async {
-    final data = await _get<Map<String, dynamic>>(
+  Future<ApiPage<LearningVideo>> courseVideos({
+    int? classroomId,
+    String? programmingLanguage,
+  }) async {
+    return _allPages(
       '/school/course-video/page',
+      _learningVideoFromJson,
       query: {
         'pageNo': '1',
         'pageSize': '100',
         if (classroomId != null) 'classroomId': '$classroomId',
+        'programmingLanguage': ?programmingLanguage,
       },
     );
-    return _page(data, _learningVideoFromJson);
   }
 
   Future<void> saveVideoProgress({
     required int courseVideoId,
+    required int contentVersion,
     required int positionSeconds,
     required int durationSeconds,
     required bool ended,
@@ -474,6 +511,7 @@ class ItClassApi {
       '/school/video-progress/save',
       body: {
         'courseVideoId': courseVideoId,
+        'contentVersion': contentVersion,
         'positionSeconds': positionSeconds,
         'durationSeconds': durationSeconds,
         'ended': ended,
@@ -482,15 +520,46 @@ class ItClassApi {
   }
 
   Future<ApiPage<Lesson>> courseDocuments({int? classroomId}) async {
-    final data = await _get<Map<String, dynamic>>(
+    return _allPages(
       '/school/course-document/page',
+      _lessonFromDocumentJson,
       query: {
         'pageNo': '1',
         'pageSize': '100',
         if (classroomId != null) 'classroomId': '$classroomId',
       },
     );
-    return _page(data, _lessonFromDocumentJson);
+  }
+
+  Future<LearningVideo> courseVideo(int id) async => _learningVideoFromJson(
+    await _get<Map<String, dynamic>>(
+      '/school/course-video/get',
+      query: {'id': '$id'},
+    ),
+  );
+
+  Future<Lesson> courseDocument(int id) async => _lessonFromDocumentJson(
+    await _get<Map<String, dynamic>>(
+      '/school/course-document/get',
+      query: {'id': '$id'},
+    ),
+  );
+
+  Future<Map<String, dynamic>> videoProgress(int id) =>
+      _get<Map<String, dynamic>>(
+        '/school/video-progress/get',
+        query: {'courseVideoId': '$id'},
+      );
+
+  Future<List<ResourceTeacher>> resourceTeachers(
+    String resourceType,
+    int resourceId,
+  ) async {
+    final data = await _get<List<dynamic>>(
+      '/school/resource/teachers',
+      query: {'resourceType': resourceType, 'resourceId': '$resourceId'},
+    );
+    return data.map((e) => ResourceTeacher.fromJson(_asMap(e))).toList();
   }
 
   Future<List<SchoolPracticeQuestion>> practiceQuestions({
@@ -506,7 +575,11 @@ class ItClassApi {
   }
 
   Future<int> createCourseVideo({
-    required int classroomId,
+    int? classroomId,
+    String? programmingLanguage,
+    List<int>? teacherAccountIds,
+    int chapterNo = 1,
+    String description = '',
     required String title,
     required String fileUrl,
     required PlatformFile file,
@@ -516,13 +589,15 @@ class ItClassApi {
       body: {
         'classroomId': classroomId,
         'title': title,
-        'description': 'Uploaded from itClass app',
+        'description': description,
+        'programmingLanguage': programmingLanguage,
+        'teacherAccountIds': ?teacherAccountIds,
         'videoUrl': fileUrl,
         'videoPath': fileUrl,
         'fileName': file.name,
         'fileSize': file.size,
         'contentType': _contentType(file),
-        'chapterNo': 1,
+        'chapterNo': chapterNo,
         'sort': 0,
       },
     );
@@ -530,7 +605,11 @@ class ItClassApi {
   }
 
   Future<int> createCourseDocument({
-    required int classroomId,
+    int? classroomId,
+    String? programmingLanguage,
+    List<int>? teacherAccountIds,
+    int chapterNo = 1,
+    String description = '',
     required String title,
     required String fileUrl,
     required PlatformFile file,
@@ -540,13 +619,15 @@ class ItClassApi {
       body: {
         'classroomId': classroomId,
         'title': title,
-        'description': 'Uploaded from itClass app',
+        'description': description,
+        'programmingLanguage': programmingLanguage,
+        'teacherAccountIds': ?teacherAccountIds,
         'documentUrl': fileUrl,
         'documentPath': fileUrl,
         'fileName': file.name,
         'fileSize': file.size,
         'contentType': _contentType(file),
-        'chapterNo': 1,
+        'chapterNo': chapterNo,
         'sort': 0,
       },
     );
@@ -613,11 +694,11 @@ class ItClassApi {
   }
 
   Future<ApiPage<SchoolExamSummary>> examPage() async {
-    final data = await _get<Map<String, dynamic>>(
+    return _allPages(
       '/school/exam/page',
+      SchoolExamSummary.fromJson,
       query: {'pageNo': '1', 'pageSize': '100'},
     );
-    return _page(data, SchoolExamSummary.fromJson);
   }
 
   Future<ExamAttemptPayload> startExam(int examId) async {
@@ -647,6 +728,7 @@ class ItClassApi {
     required int attemptId,
     required List<ExamQuestion> questions,
     required Map<int, int> selectedAnswers,
+    Map<int, String> writtenAnswers = const {},
   }) {
     return _post<void>(
       '/school/exam/submit',
@@ -655,13 +737,12 @@ class ItClassApi {
         'answers': [
           for (var i = 0; i < questions.length; i++)
             if (questions[i].paperQuestionId != null &&
-                selectedAnswers[i] != null)
+                (selectedAnswers[i] != null || writtenAnswers[i] != null))
               {
                 'paperQuestionId': questions[i].paperQuestionId,
-                'answerContent': _answerContent(
-                  questions[i],
-                  selectedAnswers[i]!,
-                ),
+                'answerContent':
+                    writtenAnswers[i] ??
+                    _answerContent(questions[i], selectedAnswers[i]!),
               },
         ],
       },
@@ -684,9 +765,12 @@ class ItClassApi {
     return _page(data, _codeReviewItemFromAttemptJson);
   }
 
-  Future<List<CodeAssignment>> codeAssignments() async {
+  Future<List<CodeAssignment>> codeAssignments({
+    String? programmingLanguage,
+  }) async {
     final data = await _get<List<dynamic>>(
       '/school/code-scoring/assignment/list',
+      query: {'programmingLanguage': ?programmingLanguage},
     );
     return data.map((item) => _codeAssignmentFromJson(_asMap(item))).toList();
   }
@@ -724,30 +808,23 @@ class ItClassApi {
         .toList();
   }
 
-  Future<String> aiTutorWelcomeMessage(int classroomId) async {
+  Future<AiTutorConfig> aiTutorConfig() async {
     final data = await _get<Map<String, dynamic>>(
       '/school/ai-tutor/config/get',
-      query: {'classroomId': '$classroomId'},
     );
-    return _asString(data['welcomeMessage']);
+    return AiTutorConfig(
+      welcomeMessage: _asString(data['welcomeMessage']),
+      autoAnswerEnabled: data['autoAnswerEnabled'] == true,
+    );
   }
 
-  Future<int> ensureAiConversation(int classroomId) async {
-    final page = await _get<Map<String, dynamic>>(
-      '/school/ai-tutor/conversation/page',
-      query: {'pageNo': '1', 'pageSize': '100', 'classroomId': '$classroomId'},
-    );
-    final conversations = _asList(page['list']);
-    for (final item in conversations) {
-      final conversation = _asMap(item);
-      if (_asInt(conversation['status']) != 20) {
-        final id = _asInt(conversation['id']);
-        if (id != null && id > 0) return id;
-      }
-    }
+  Future<String> aiTutorWelcomeMessage([int? classroomId]) async =>
+      (await aiTutorConfig()).welcomeMessage;
+
+  Future<int> ensureAiConversation([int? classroomId]) async {
     final data = await _post<dynamic>(
       '/school/ai-tutor/conversation/create',
-      body: {'classroomId': classroomId, 'title': 'itClass Chat'},
+      body: {'title': 'プログラミングの質問'},
     );
     return _asInt(data) ?? 0;
   }
@@ -786,13 +863,22 @@ class ItClassApi {
   }
 
   Future<List<StudentProfile>> chatContacts({int? classroomId}) async {
-    final data = await _get<List<dynamic>>(
-      '/school/chat/contact/list',
-      query: {if (classroomId != null) 'classroomId': '$classroomId'},
-    );
-    return data
-        .map((item) => _studentProfileFromContactJson(_asMap(item)))
-        .toList();
+    final result = <StudentProfile>[];
+    var pageNo = 1;
+    while (true) {
+      final data = await _get<Map<String, dynamic>>(
+        '/school/chat/conversation/page',
+        query: {
+          'pageNo': '${pageNo++}',
+          'pageSize': '100',
+          if (classroomId != null) 'classroomId': '$classroomId',
+        },
+      );
+      final page = _page(data, _chatContactFromConversationJson);
+      result.addAll(page.list);
+      if (page.list.isEmpty || result.length >= page.total) break;
+    }
+    return result;
   }
 
   Future<List<ChatConversationSummary>> chatConversations({
@@ -810,12 +896,21 @@ class ItClassApi {
   }
 
   Future<int> getOrCreateChat({
-    required int classroomId,
+    int? classroomId,
     required int peerAccountId,
+    String? resourceType,
+    int? resourceId,
   }) async {
     final data = await _post<dynamic>(
       '/school/chat/conversation/get-or-create',
-      body: {'classroomId': classroomId, 'peerAccountId': peerAccountId},
+      body: {
+        'peerAccountId': peerAccountId,
+        if (resourceType != null && resourceId != null) ...{
+          'resourceType': resourceType,
+          'resourceId': resourceId,
+        } else
+          'classroomId': ?classroomId,
+      },
     );
     return _asInt(data) ?? _asInt(_asMap(data)['id']) ?? 0;
   }
@@ -888,8 +983,8 @@ class ItClassApi {
   }
 
   Future<StudentProfile> createStudent({
-    required int classroomId,
-    required String programmingLanguage,
+    int? classroomId,
+    String? programmingLanguage,
     required String realName,
     required String username,
     required String password,
@@ -898,13 +993,11 @@ class ItClassApi {
     final data = await _post<dynamic>(
       '/school/account/create-student',
       body: {
-        'classroomId': classroomId,
         'realName': realName,
         'nickname': realName,
         'email': username,
         'password': password,
         'mobile': mobile,
-        'programmingLanguage': programmingLanguage,
       },
     );
     return _studentProfileFromAccountJson(_asMap(data));
@@ -924,10 +1017,12 @@ class ItClassApi {
   Future<int> createQuestion(
     ExamQuestion question, {
     required String programmingLanguage,
+    List<int>? teacherAccountIds,
   }) async {
     final data = await _post<dynamic>(
       '/school/exam-teacher/question/save',
       body: {
+        'teacherAccountIds': ?teacherAccountIds,
         'type': question.type ?? questionTypeSingleChoice,
         'difficulty': 1,
         'programmingLanguage': programmingLanguage,
@@ -955,13 +1050,16 @@ class ItClassApi {
     required String title,
     required String description,
     required List<int> questionIds,
+    List<int>? teacherAccountIds,
+    int durationMinutes = 0,
   }) async {
     final data = await _post<dynamic>(
       '/school/exam-teacher/paper/save',
       body: {
+        'teacherAccountIds': ?teacherAccountIds,
         'title': title,
         'description': description,
-        'durationMinutes': 30,
+        'durationMinutes': durationMinutes,
         'status': paperStatusReady,
         'questions': [
           for (var i = 0; i < questionIds.length; i++)
@@ -973,42 +1071,56 @@ class ItClassApi {
   }
 
   Future<int> createAndPublishExam({
-    required int classroomId,
+    int? classroomId,
     required int paperId,
     required String title,
     required String description,
+    int durationMinutes = 0,
+    int maxAttempts = 0,
+    int passScore = 60,
+    List<int>? teacherAccountIds,
   }) async {
-    final now = DateTime.now();
     final data = await _post<dynamic>(
       '/school/exam-teacher/exam/save',
       body: {
         'paperId': paperId,
         'title': title,
         'description': description,
-        'classroomIds': [classroomId],
-        'startTime': now
-            .subtract(const Duration(minutes: 1))
-            .millisecondsSinceEpoch,
-        'endTime': now.add(const Duration(days: 30)).millisecondsSinceEpoch,
-        'durationMinutes': 30,
-        'passScore': 60,
-        'maxAttempts': 3,
+        'durationMinutes': durationMinutes,
+        'passScore': passScore,
+        'maxAttempts': maxAttempts,
+        'teacherAccountIds': ?teacherAccountIds,
         'shuffleQuestions': false,
         'shuffleOptions': false,
         'resultPublishType': examResultPublishImmediate,
         'showAnswer': true,
       },
     );
-    final examId = _asInt(data) ?? 0;
-    await _put<void>(
-      '/school/exam-teacher/exam/publish',
-      query: {'id': '$examId'},
-    );
-    return examId;
+    return _asInt(data) ?? 0;
   }
 
   Future<T> _get<T>(String path, {Map<String, String>? query}) {
     return _send<T>('GET', path, query: query);
+  }
+
+  Future<ApiPage<T>> _allPages<T>(
+    String path,
+    T Function(Map<String, dynamic>) mapper, {
+    Map<String, String>? query,
+  }) async {
+    final items = <T>[];
+    var pageNo = 1;
+    while (true) {
+      final data = await _get<Map<String, dynamic>>(
+        path,
+        query: {...?query, 'pageNo': '${pageNo++}', 'pageSize': '100'},
+      );
+      final page = _page(data, mapper);
+      items.addAll(page.list);
+      if (page.list.isEmpty || items.length >= page.total) {
+        return ApiPage(list: items, total: page.total);
+      }
+    }
   }
 
   Future<T> _post<T>(String path, {Map<String, String>? query, Object? body}) {
@@ -1027,6 +1139,7 @@ class ItClassApi {
   }) async {
     final uri = _uri(path, query);
     final headers = _headers();
+    if (path == '/member/auth/account-login') headers.remove('Authorization');
     final encodedBody = body == null ? null : jsonEncode(body);
     _logRequest(method, uri, headers, body);
     late final http.Response response;
@@ -1066,12 +1179,13 @@ class ItClassApi {
     final decoded = jsonDecode(body);
     if (decoded is Map<String, dynamic> && decoded.containsKey('code')) {
       final code = _asInt(decoded['code']) ?? 0;
-      if (code != 0 && code != 200) {
+      if (code != 0) {
         throw ApiException(
           _asString(
             decoded['msg'] ?? decoded['message'],
             fallback: 'API error $code',
           ),
+          code: code,
         );
       }
       return decoded['data'] as T;
@@ -1215,7 +1329,9 @@ LearningVideo _learningVideoFromJson(Map<String, dynamic> json) {
     classroomId: _asInt(json['classroomId']),
     title: _asString(json['title'], fallback: 'Course Video'),
     category: _asString(
-      json['classroomProgrammingLanguage'] ?? json['classroomName'],
+      json['programmingLanguage'] ??
+          json['classroomProgrammingLanguage'] ??
+          json['classroomName'],
     ),
     duration: durationSeconds > 0 ? '${(durationSeconds / 60).ceil()}分' : '未設定',
     progress: ((progressPercent ?? 0) / 100).clamp(0.0, 1.0),
@@ -1226,6 +1342,10 @@ LearningVideo _learningVideoFromJson(Map<String, dynamic> json) {
     ),
     durationSeconds: durationSeconds,
     lastPositionSeconds: _asInt(json['lastPositionSeconds']) ?? 0,
+    contentVersion: _asInt(json['contentVersion']) ?? 0,
+    teachers: _asList(
+      json['teachers'],
+    ).map((e) => ResourceTeacher.fromJson(_asMap(e))).toList(),
   );
 }
 
@@ -1244,8 +1364,13 @@ Lesson _lessonFromDocumentJson(Map<String, dynamic> json) {
     classroomId: _asInt(json['classroomId']),
     title: title,
     level: _asString(
-      json['classroomProgrammingLanguage'] ?? json['classroomName'],
+      json['programmingLanguage'] ??
+          json['classroomProgrammingLanguage'] ??
+          json['classroomName'],
     ),
+    teachers: _asList(
+      json['teachers'],
+    ).map((e) => ResourceTeacher.fromJson(_asMap(e))).toList(),
     summary: description,
     content: url.isEmpty ? description : '$description\n\n資料URL: $url',
     code: '',
@@ -1298,6 +1423,7 @@ ExamQuestion _examQuestionFromJson(Map<String, dynamic> json) {
     type: _asInt(json['type']),
     optionKeys: optionKeys,
     score: _asInt(json['score']),
+    savedAnswer: _asString(json['savedAnswer']),
     topic: _asString(json['title'], fallback: 'テスト問題'),
     question: _asString(json['content'], fallback: _asString(json['title'])),
     options: labels
@@ -1386,17 +1512,23 @@ TeacherRequest _teacherRequestFromJson(Map<String, dynamic> json) {
   );
 }
 
-StudentProfile _studentProfileFromContactJson(Map<String, dynamic> json) {
-  final nickname = _asString(json['nickname']).trim();
-  final realName = _asString(json['realName'], fallback: 'Student');
+StudentProfile _chatContactFromConversationJson(Map<String, dynamic> json) {
+  final nickname = _asString(json['peerNickname']).trim();
+  final realName = _asString(json['peerRealName'], fallback: 'ユーザー');
   return StudentProfile(
     nickname.isEmpty ? realName : nickname,
-    _asString(json['classroomName'], fallback: '学生'),
-    '会話履歴を開く',
-    accountId: _asInt(json['accountId']),
+    _asString(json['resourceName'] ?? json['classroomName'], fallback: '会話'),
+    _asString(json['lastMessageContent'], fallback: '会話履歴を開く'),
+    accountId: _asInt(json['peerAccountId']),
     classroomId: _asInt(json['classroomId']),
-    accountNo: _asString(json['accountNo']),
-    email: _asString(json['accountNo']),
+    accountNo: _asString(json['peerAccountNo']),
+    conversationId: _asInt(json['id']),
+    resourceType: json['resourceType'] as String?,
+    resourceId: _asInt(json['resourceId']),
+    resourceName: _asString(json['resourceName']),
+    unreadCount: _asInt(json['unreadCount']) ?? 0,
+    lastMessageTime: _asDateTime(json['lastMessageTime']),
+    email: _asString(json['peerAccountNo']),
     phone: '',
   );
 }

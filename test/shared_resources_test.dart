@@ -756,7 +756,6 @@ void main() {
             widget is TextField && widget.decoration?.labelText == 'タイトル',
       );
       expect(tester.widget<TextField>(title).controller!.text, 'A先生の最新動画');
-      expect(find.text('ID 101 · 編集バージョン 7'), findsOneWidget);
       await tester.enterText(title, 'B先生の編集');
       await _tapAndSettle(tester, save);
 
@@ -786,7 +785,6 @@ void main() {
         reason: 'Reloading must never automatically retry the PUT.',
       );
       expect(tester.widget<TextField>(title).controller!.text, 'A先生がさらに更新した動画');
-      expect(find.text('ID 101 · 編集バージョン 8'), findsOneWidget);
       expect(tester.widget<FilledButton>(save).onPressed, isNotNull);
       await tester.enterText(title, 'B先生が再確認して編集');
       await _tapAndSettle(tester, save);

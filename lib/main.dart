@@ -20,6 +20,7 @@ part 'shared/widgets.dart';
 part 'shared/models.dart';
 part 'shared/api.dart';
 part 'shared/session.dart';
+part 'shared/user_messages.dart';
 part 'shared/teacher_resources.dart';
 part 'shared/mock_data.dart';
 

@@ -1501,7 +1501,7 @@ Lesson _lessonFromDocumentJson(Map<String, dynamic> json) {
       json['teachers'],
     ).map((e) => ResourceTeacher.fromJson(_asMap(e))).toList(),
     summary: description,
-    content: url.isEmpty ? description : '$description\n\n資料URL: $url',
+    content: description,
     code: '',
     sections: const [],
     exercise: const LessonExercise(
@@ -1796,7 +1796,7 @@ CodeAssignment _codeAssignmentFromJson(Map<String, dynamic> json) {
     id: _asInt(json['id']),
     title: _asString(json['title'], fallback: 'Code Assignment'),
     level: _asString(json['level']),
-    status: _asString(json['status'], fallback: 'API課題'),
+    status: _asString(json['status'], fallback: 'コード課題'),
     summary: _asString(json['summary']),
     prompt: _asString(json['prompt']),
     requirements: _asList(

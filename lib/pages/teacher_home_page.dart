@@ -83,8 +83,8 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
             if (_requests.isEmpty)
               const _InlineNotice(
                 tone: _NoticeTone.warning,
-                title: '未回答データがありません',
-                message: 'バックエンドから先生対応が必要な AI 質問が返っていません。',
+                title: '未回答の質問はありません',
+                message: '学生からの質問はここに表示されます。',
               ),
             for (var i = 0; i < _requests.length; i++)
               _CompactListCard(
@@ -126,7 +126,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
               selected: true,
               title: '成績確認',
               subtitle: '${_teacherCodeReviews.length}件',
-              detail: 'バックエンドの提出履歴から採点状況を表示します。',
+              detail: '学生の提出履歴と採点状況を確認します。',
               onTap: () => unawaited(_loadTeacherData()),
             ),
             _CompactListCard(
@@ -280,7 +280,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
       case TeacherSection.settings:
         return _ProfileSettingsWorkspace(
           roleTitle: '先生設定',
-          roleSubtitle: 'プロフィール、アイコン、連絡先、パスワードをバックエンドに保存します。',
+          roleSubtitle: 'プロフィール、アイコン、連絡先、パスワードを変更できます。',
           initialRealName: ItClassSession.current?.realName ?? '',
           initialNickname: ItClassSession.current?.nickname ?? '',
           initialEmail: ItClassSession.current?.email ?? '',
@@ -301,7 +301,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     final request = _requests[_selectedRequest];
     try {
       if (request.questionId == null) {
-        throw const ApiException('質問IDがありません。');
+        throw const ApiException('質問を選択してください。');
       }
       await ItClassApi.instance.replyAiQuestion(
         questionId: request.questionId!,
@@ -317,12 +317,12 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
       });
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('学生への回答をバックエンドに保存しました。')));
+      ).showSnackBar(const SnackBar(content: Text('学生への回答を保存しました。')));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('API保存に失敗しました：$error')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('回答を保存できませんでした：${userFacingError(error)}')),
+      );
     }
   }
 
@@ -342,7 +342,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         final data = await fetch();
         if (mounted) setState(() => apply(data));
       } catch (error) {
-        errors.add('$label：$error');
+        errors.add('$label：${userFacingError(error)}');
       }
     }
 

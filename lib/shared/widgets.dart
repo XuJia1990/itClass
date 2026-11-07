@@ -777,7 +777,7 @@ class _CodeScoringWorkspaceState extends State<_CodeScoringWorkspace> {
           content: Text(
             error is ApiException && error.code == 1004002046
                 ? 'この言語の自動採点は未対応です。テストから提出するか、担当の先生へ相談してください。'
-                : '採点に失敗しました：$error',
+                : '採点に失敗しました：${userFacingError(error)}',
           ),
         ),
       );
@@ -1157,7 +1157,7 @@ class _LearningWorkspaceState extends State<_LearningWorkspace> {
       if (!mounted) return;
       final uri = Uri.tryParse(detail.documentUrl);
       if (uri == null || !uri.hasScheme) {
-        throw const ApiException('教材URLが正しくありません。');
+        throw const ApiException('この教材を開けませんでした。一覧を更新してもう一度お試しください。');
       }
       await showDialog<void>(
         context: context,
@@ -1194,7 +1194,9 @@ class _LearningWorkspaceState extends State<_LearningWorkspace> {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('教材を開けませんでした：$error')));
+        ..showSnackBar(
+          SnackBar(content: Text('教材を開けませんでした：${userFacingError(error)}')),
+        );
     }
   }
 }
@@ -1563,7 +1565,7 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
       } else {
         setState(() {
           _showPlayer = true;
-          _error = '動画を読み込めませんでした：$error';
+          _error = '動画を読み込めませんでした：${userFacingError(error)}';
         });
       }
       return false;
@@ -1723,7 +1725,9 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
       if (error is ApiException && error.code == 1004002045) {
         _requireReload();
       } else if (mounted && !_disposing) {
-        setState(() => _saveError = '通信状態を確認し、もう一度操作してください：$error');
+        setState(
+          () => _saveError = '通信状態を確認し、もう一度操作してください：${userFacingError(error)}',
+        );
       }
       return false;
     }
@@ -2612,9 +2616,9 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
       });
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('返信送信に失敗しました：$error')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('返信送信に失敗しました：${userFacingError(error)}')),
+      );
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -2641,9 +2645,9 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
       _markLatestStudentMessageRead(messages);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('会話履歴の取得に失敗しました：$error')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('会話履歴の取得に失敗しました：${userFacingError(error)}')),
+      );
     } finally {
       if (mounted && generation == _loadGeneration) {
         setState(() => _loading = false);
@@ -2896,7 +2900,7 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
         }
       });
     } catch (error) {
-      if (mounted) setState(() => _lessonError = '$error');
+      if (mounted) setState(() => _lessonError = userFacingError(error));
     } finally {
       if (mounted) setState(() => _loadingLessons = false);
     }
@@ -2920,7 +2924,7 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
       );
       if (mounted) setState(() => _draftQuestions = questions);
     } catch (error) {
-      if (mounted) _notice('AI問題生成に失敗しました：$error');
+      if (mounted) _notice('AI問題生成に失敗しました：${userFacingError(error)}');
     } finally {
       if (mounted) setState(() => _generatingQuestions = false);
     }
@@ -3047,7 +3051,7 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
       });
       _notice('テストを保存しました。学生はすぐに受験できます。');
     } catch (error) {
-      if (mounted) _notice('テスト保存に失敗しました：$error');
+      if (mounted) _notice('テスト保存に失敗しました：${userFacingError(error)}');
     } finally {
       if (mounted) setState(() => _savingTest = false);
     }
@@ -3224,9 +3228,9 @@ class _UploadDropZoneState extends State<_UploadDropZone> {
       setState(() => _selectedFile = null);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('アップロードに失敗しました：$error')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('アップロードに失敗しました：${userFacingError(error)}')),
+      );
     } finally {
       if (mounted) setState(() => _uploading = false);
     }
@@ -3845,7 +3849,7 @@ class _UserRoleManagementWorkspaceState
           const _InlineNotice(
             tone: _NoticeTone.warning,
             title: '学生データがありません',
-            message: 'バックエンドに学生アカウントが登録されていません。',
+            message: '学生アカウントはまだ登録されていません。',
           ),
         for (final student in _managedStudents)
           _UserRoleCard(
@@ -3895,15 +3899,19 @@ class _UserRoleManagementWorkspaceState
       } catch (error) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('作成は完了しましたが一覧を更新できませんでした：$error')),
+            SnackBar(
+              content: Text(
+                '作成は完了しましたが一覧を更新できませんでした：${userFacingError(error)}',
+              ),
+            ),
           );
         }
       }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('学生作成に失敗しました：$error')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('学生作成に失敗しました：${userFacingError(error)}')),
+        );
       }
     } finally {
       if (mounted) setState(() => _creatingStudent = false);
@@ -3923,7 +3931,7 @@ class _UserRoleManagementWorkspaceState
     }
     try {
       if (widget.classrooms.isEmpty || existing.accountId == null) {
-        throw const ApiException('担当クラスまたは学生IDがありません。');
+        throw const ApiException('担当クラスと学生を選択してください。');
       }
       await ItClassApi.instance.addExistingStudent(
         classroomId: widget.classrooms.first.id,
@@ -3943,9 +3951,9 @@ class _UserRoleManagementWorkspaceState
       ).showSnackBar(SnackBar(content: Text('${existing.name} を追加しました。')));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('既存学生の追加に失敗しました：$error')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('既存学生の追加に失敗しました：${userFacingError(error)}')),
+      );
     }
   }
 }
@@ -4230,9 +4238,9 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('アイコンのアップロードに失敗しました：$error')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('アイコンのアップロードに失敗しました：${userFacingError(error)}')),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -4290,9 +4298,9 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
       ).showSnackBar(SnackBar(content: Text(message)));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('保存に失敗しました：$error')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('保存に失敗しました：${userFacingError(error)}')),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -4306,9 +4314,9 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
       _applyProfile(profile);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('プロフィール取得に失敗しました：$error')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('プロフィール取得に失敗しました：${userFacingError(error)}')),
+      );
     } finally {
       if (mounted) setState(() => _loadingProfile = false);
     }
@@ -4404,22 +4412,12 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
                       : null,
                 ),
                 const SizedBox(height: 12),
-                Text(_avatarController.text),
-                const SizedBox(height: 12),
                 OutlinedButton.icon(
                   onPressed: _chooseAvatar,
                   icon: const Icon(Icons.image_rounded),
                   label: const Text('アイコンファイルを選択'),
                 ),
               ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _avatarController,
-            decoration: const InputDecoration(
-              labelText: 'アイコン',
-              prefixIcon: Icon(Icons.account_circle_outlined),
             ),
           ),
         ];

@@ -662,7 +662,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
       case StudentSection.settings:
         return _ProfileSettingsWorkspace(
           roleTitle: '学生設定',
-          roleSubtitle: 'プロフィール、アイコン、連絡先、パスワードをバックエンドに保存します。',
+          roleSubtitle: 'プロフィール、アイコン、連絡先、パスワードを変更できます。',
           initialRealName: ItClassSession.current?.realName ?? '',
           initialNickname: ItClassSession.current?.nickname ?? '',
           initialEmail: ItClassSession.current?.email ?? '',
@@ -948,7 +948,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
       );
     } catch (error) {
       if (!mounted) return;
-      final message = '相談を開始できませんでした：$error';
+      final message = '相談を開始できませんでした：${userFacingError(error)}';
       setState(() => _directoryError = message);
       ScaffoldMessenger.of(
         context,
@@ -1120,7 +1120,11 @@ class _StudentHomePageState extends State<StudentHomePage> {
       if (mounted) setState(() => _apiTopics = topics.list);
     } catch (error) {
       if (!mounted || requestId != _aiRequestId) return;
-      setState(() => _aiMessages.add(ChatMessage.ai('質問の送信に失敗しました：$error')));
+      setState(
+        () => _aiMessages.add(
+          ChatMessage.ai('質問の送信に失敗しました：${userFacingError(error)}'),
+        ),
+      );
     } finally {
       if (mounted && requestId == _aiRequestId) {
         setState(() => _aiSending = false);
@@ -1166,9 +1170,9 @@ class _StudentHomePageState extends State<StudentHomePage> {
       if (requestId == _chatRequestId && _teacherInput.text.isEmpty) {
         _teacherInput.text = text;
       }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('先生への送信に失敗しました：$error')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('先生への送信に失敗しました：${userFacingError(error)}')),
+      );
     } finally {
       if (mounted && requestId == _chatRequestId) {
         setState(() => _teacherSending = false);
@@ -1179,7 +1183,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
   Future<ScoreResult> _scoreCode() async {
     final assignment = _codeAssignmentsForScoring[_selectedCodeAssignment];
     if (assignment.id == null) {
-      throw const ApiException('コード課題IDがありません。バックエンドの課題データを確認してください。');
+      throw const ApiException('この課題を開けませんでした。一覧を更新してもう一度お試しください。');
     }
     return ItClassApi.instance.scoreCode(
       assignmentId: assignment.id!,
@@ -1227,9 +1231,9 @@ class _StudentHomePageState extends State<StudentHomePage> {
       setState(() => _savedExamAnswers[index] = answer);
     } catch (error) {
       if (!mounted || attemptId != _examAttemptId) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('回答保存に失敗しました：$error')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('回答保存に失敗しました：${userFacingError(error)}')),
+      );
     } finally {
       if (mounted && attemptId == _examAttemptId) {
         setState(() => _savingExamAnswers.remove(index));
@@ -1266,7 +1270,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
       await _refreshExamResult();
     } catch (error) {
       if (!mounted || attemptId != _examAttemptId) return;
-      setState(() => _examError = '提出に失敗しました：$error');
+      setState(() => _examError = '提出に失敗しました：${userFacingError(error)}');
     } finally {
       if (mounted && attemptId == _examAttemptId) {
         setState(() => _examSubmitting = false);
@@ -1287,7 +1291,8 @@ class _StudentHomePageState extends State<StudentHomePage> {
     } catch (error) {
       if (!mounted || attemptId != _examAttemptId) return;
       setState(
-        () => _examError = '提出済みです。採点結果はまだ取得できません。時間をおいて再確認してください。\n$error',
+        () => _examError =
+            '提出済みです。採点結果はまだ取得できません。時間をおいて再確認してください。\n${userFacingError(error)}',
       );
     }
   }
@@ -1308,7 +1313,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
         final value = await fetch();
         if (mounted) setState(() => apply(value));
       } catch (error) {
-        errors.add('$label：$error');
+        errors.add('$label：${userFacingError(error)}');
       }
     }
 
@@ -1422,7 +1427,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
       });
     } catch (error) {
       if (!mounted || _loadingExamId != exam.id) return;
-      final message = 'テスト開始に失敗しました：$error';
+      final message = 'テスト開始に失敗しました：${userFacingError(error)}';
       setState(() => _examError = message);
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
@@ -1502,7 +1507,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
       setState(() {
         _aiMessages
           ..clear()
-          ..add(ChatMessage.ai('AI会話履歴の取得に失敗しました：$error'));
+          ..add(ChatMessage.ai('AI会話履歴の取得に失敗しました：${userFacingError(error)}'));
       });
     } finally {
       if (mounted && requestId == _aiRequestId) {
@@ -1560,12 +1565,12 @@ class _StudentHomePageState extends State<StudentHomePage> {
     try {
       var conversationId = contact.conversationId;
       if (conversationId == null) {
-        if (contact.accountId == null) throw const ApiException('先生IDがありません。');
+        if (contact.accountId == null) throw const ApiException('先生を選択してください。');
         final type = contact.resourceType;
         final hasResource =
             type != null && type.isNotEmpty && contact.resourceId != null;
         if (!hasResource && contact.classroomId == null) {
-          throw const ApiException('会話IDがありません。教材の相談ボタンから会話を開いてください。');
+          throw const ApiException('教材の相談ボタンから会話を開いてください。');
         }
         // Legacy contacts may still require their own original classroom.
         conversationId = await ItClassApi.instance.getOrCreateChat(
@@ -1602,7 +1607,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
       if (!mounted || requestId != _chatRequestId) return;
       setState(() {
         _chatConversationId = null;
-        _chatError = '会話履歴の取得に失敗しました：$error';
+        _chatError = '会話履歴の取得に失敗しました：${userFacingError(error)}';
       });
     } finally {
       if (mounted && requestId == _chatRequestId) {
@@ -1635,7 +1640,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
       });
     } catch (error) {
       if (!mounted || requestId != _contactsRequestId) return;
-      setState(() => _chatError = '会話一覧の更新に失敗しました：$error');
+      setState(() => _chatError = '会話一覧の更新に失敗しました：${userFacingError(error)}');
     }
   }
 
@@ -1831,7 +1836,7 @@ String _contactResourceLabel(StudentProfile contact) {
     _ => type,
   };
   final name = contact.resourceName.trim();
-  return '$label · ${name.isEmpty ? '#${contact.resourceId ?? ''}' : name}';
+  return name.isEmpty ? label : '$label · $name';
 }
 
 String _resourceTeacherName(ResourceTeacher teacher) {
@@ -1974,7 +1979,9 @@ class _StudentResourceConsultationButtonState
       if (conversationId <= 0) throw const ApiException('会話を作成できませんでした。');
       widget.onConversationCreated(conversationId, teacher);
     } catch (error) {
-      if (mounted) setState(() => _error = '相談を開始できませんでした：$error');
+      if (mounted) {
+        setState(() => _error = '相談を開始できませんでした：${userFacingError(error)}');
+      }
     } finally {
       if (mounted) {
         setState(() {

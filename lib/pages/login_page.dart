@@ -98,8 +98,6 @@ class LoginPage extends StatelessWidget {
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(height: 18),
-                                  const _LoginNote(),
                                 ],
                               ),
                             ),
@@ -238,34 +236,6 @@ class _RoleLoginCard extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _LoginNote extends StatelessWidget {
-  const _LoginNote();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: _AppPalette.washBlue,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: _AppPalette.line),
-      ),
-      child: const Row(
-        children: [
-          Icon(Icons.info_outline_rounded, color: _AppPalette.sky, size: 20),
-          SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'twcschool の遠端 /app-api に接続してログインします。接続先は web/app-config.js または TWSCHOOL_API_BASE_URL で変更できます。',
-              style: TextStyle(color: _AppPalette.muted),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -418,12 +388,6 @@ class _RoleAuthPageState extends State<_RoleAuthPage> {
                           : const Icon(Icons.login_rounded),
                       label: Text(_loggingIn ? '接続中' : 'ログイン'),
                     ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'twcschool の /app-api/member/auth/account-login を使用します。',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: _AppPalette.muted, fontSize: 12),
-                    ),
                   ],
                 ),
               ),
@@ -456,7 +420,9 @@ class _RoleAuthPageState extends State<_RoleAuthPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('ログインできませんでした：$error')));
+        ..showSnackBar(
+          SnackBar(content: Text('ログインできませんでした：${userFacingError(error)}')),
+        );
     } finally {
       if (mounted) setState(() => _loggingIn = false);
     }

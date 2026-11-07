@@ -88,7 +88,7 @@ String _responsibleTeacherLabel(ResourceTeacher teacher) {
   return [
     if (name.isNotEmpty) name,
     if (account.isNotEmpty) account,
-    if (name.isEmpty && account.isEmpty) '講師 #${teacher.accountId}',
+    if (name.isEmpty && account.isEmpty) '担当講師',
   ].join(' · ');
 }
 
@@ -134,7 +134,7 @@ class _ResponsibleTeacherPickerState extends State<_ResponsibleTeacherPicker> {
       setState(() => _teachers = teachers);
     } catch (error) {
       if (!mounted) return;
-      setState(() => _error = '講師一覧を取得できませんでした：$error');
+      setState(() => _error = '講師一覧を取得できませんでした：${userFacingError(error)}');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -169,7 +169,7 @@ class _ResponsibleTeacherPickerState extends State<_ResponsibleTeacherPicker> {
               InputChip(
                 label: Text(
                   known[id] == null
-                      ? '講師 #$id'
+                      ? '担当講師（詳細未取得）'
                       : _responsibleTeacherLabel(known[id]!),
                 ),
                 onDeleted: widget.enabled
@@ -296,7 +296,7 @@ class _TeacherMaterialManagementState
       });
     } catch (error) {
       if (!mounted || request != _request) return;
-      setState(() => _error = '$error');
+      setState(() => _error = userFacingError(error));
     } finally {
       if (mounted && request == _request) setState(() => _loading = false);
     }
@@ -398,7 +398,7 @@ class _TeacherMaterialManagementState
                   [
                     '${_asInt(item['status']) == 0 ? '公開中' : '停用中'} · '
                         '${_asString(item['programmingLanguage'])} · '
-                        '第${item['chapterNo']}章 · v${item['version']}',
+                        '第${item['chapterNo']}章',
                     _asList(item['teachers'])
                         .map(
                           (teacher) => _responsibleTeacherLabel(
@@ -474,6 +474,7 @@ class _TeacherMaterialEditorState extends State<_TeacherMaterialEditor> {
   int _status = 0;
   PlatformFile? _replacement;
   Map<String, dynamic>? _uploadedFile;
+  bool _uploadingCover = false;
   bool _loading = false;
   bool _saving = false;
   bool _conflict = false;
@@ -557,7 +558,7 @@ class _TeacherMaterialEditorState extends State<_TeacherMaterialEditor> {
       if (!mounted) return;
       setState(() => _apply(data));
     } catch (error) {
-      if (mounted) setState(() => _error = '$error');
+      if (mounted) setState(() => _error = userFacingError(error));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -603,12 +604,43 @@ class _TeacherMaterialEditorState extends State<_TeacherMaterialEditor> {
         if (widget.kind.isVideo) _duration.text = '0';
       });
     } catch (error) {
-      if (mounted) setState(() => _error = 'ファイルを選択できませんでした：$error');
+      if (mounted) {
+        setState(() => _error = 'ファイルを選択できませんでした：${userFacingError(error)}');
+      }
+    }
+  }
+
+  Future<void> _chooseCover() async {
+    if (_uploadingCover || _saving || _conflict) return;
+    setState(() => _uploadingCover = true);
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.image,
+        withData: true,
+      );
+      if (!mounted || result == null || result.files.isEmpty) return;
+      final url = await ItClassApi.instance.uploadFile(
+        result.files.single,
+        directory: 'itclass/covers',
+      );
+      if (mounted) setState(() => _cover.text = url);
+    } catch (error) {
+      if (mounted) {
+        setState(() => _error = '表紙画像を変更できませんでした：${userFacingError(error)}');
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingCover = false);
     }
   }
 
   Future<void> _save() async {
-    if (_saving || _conflict || _loading || _original == null) return;
+    if (_saving ||
+        _uploadingCover ||
+        _conflict ||
+        _loading ||
+        _original == null) {
+      return;
+    }
     if (!_form.currentState!.validate()) return;
     if (_teacherIds.isEmpty || _teacherIds.length > 100) {
       setState(() => _error = '担当講師を1〜100名選択してください。');
@@ -675,7 +707,7 @@ class _TeacherMaterialEditorState extends State<_TeacherMaterialEditor> {
         _conflict = error is ApiException && error.code == 1004002045;
         _error = _conflict
             ? '他の講師が内容を更新しました。最新の内容を再読み込みし、確認してから保存してください。'
-            : '$error';
+            : userFacingError(error);
       });
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -684,12 +716,12 @@ class _TeacherMaterialEditorState extends State<_TeacherMaterialEditor> {
 
   @override
   Widget build(BuildContext context) {
-    final busy = _loading || _saving;
+    final busy = _loading || _saving || _uploadingCover;
     final unknownClassroom =
         _classroomId != null &&
         !widget.classrooms.any((item) => item.id == _classroomId);
     return PopScope(
-      canPop: !_saving,
+      canPop: !_saving && !_uploadingCover,
       child: AlertDialog(
         title: Text('${widget.kind.label}${widget.id == null ? 'を登録' : 'を編集'}'),
         content: SizedBox(
@@ -726,10 +758,6 @@ class _TeacherMaterialEditorState extends State<_TeacherMaterialEditor> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          if (widget.id != null)
-                            Text(
-                              'ID ${widget.id} · 編集バージョン ${_original!['version']}',
-                            ),
                           _textField(
                             _title,
                             'タイトル',
@@ -767,7 +795,7 @@ class _TeacherMaterialEditorState extends State<_TeacherMaterialEditor> {
                               if (unknownClassroom)
                                 DropdownMenuItem(
                                   value: _classroomId,
-                                  child: Text('現在の分類 #$_classroomId（保持）'),
+                                  child: const Text('現在の分類（変更なし）'),
                                 ),
                             ],
                             onChanged: (value) => setState(
@@ -779,15 +807,45 @@ class _TeacherMaterialEditorState extends State<_TeacherMaterialEditor> {
                           _numberField(_sort, '表示順'),
                           if (widget.kind.isVideo) ...[
                             _numberField(_duration, '動画の長さ（秒・0は未設定）'),
-                            _textField(_cover, '表紙画像のURL（任意）', maxLength: 512),
+                            const Text('表紙画像（任意）'),
+                            if (_cover.text.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                ),
+                                child: Image.network(
+                                  _cover.text,
+                                  height: 90,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (_, _, _) =>
+                                      const Text('画像を表示できませんでした。選び直してください。'),
+                                ),
+                              ),
+                            Wrap(
+                              spacing: 8,
+                              children: [
+                                OutlinedButton.icon(
+                                  onPressed: busy ? null : _chooseCover,
+                                  icon: const Icon(Icons.image_outlined),
+                                  label: Text(
+                                    _uploadingCover ? 'アップロード中' : '表紙画像を選択',
+                                  ),
+                                ),
+                                if (_cover.text.isNotEmpty)
+                                  TextButton(
+                                    onPressed: busy
+                                        ? null
+                                        : () => setState(_cover.clear),
+                                    child: const Text('表紙画像を外す'),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
                           ],
                           Text(
                             'ファイル：${_replacement?.name ?? _original!['fileName'] ?? '未登録'}',
                           ),
                           if (_replacement == null) ...[
-                            SelectableText(
-                              _asString(_original![widget.kind.urlField]),
-                            ),
                             Text(
                               '${_original!['fileSize'] ?? 0} bytes · ${_original!['contentType'] ?? ''}',
                             ),
@@ -831,7 +889,9 @@ class _TeacherMaterialEditorState extends State<_TeacherMaterialEditor> {
         ),
         actions: [
           TextButton(
-            onPressed: _saving ? null : () => Navigator.pop(context, false),
+            onPressed: _saving || _uploadingCover
+                ? null
+                : () => Navigator.pop(context, false),
             child: const Text('閉じる'),
           ),
           FilledButton.icon(
@@ -1051,7 +1111,9 @@ class _TeacherAssessmentManagementState
         _total = result.total;
       });
     } catch (error) {
-      if (mounted && request == _request) setState(() => _error = '$error');
+      if (mounted && request == _request) {
+        setState(() => _error = userFacingError(error));
+      }
     } finally {
       if (mounted && request == _request) setState(() => _loading = false);
     }
@@ -1117,7 +1179,7 @@ class _TeacherAssessmentManagementState
             child: ListTile(
               title: Text(_asString(item['title'])),
               subtitle: Text(
-                '${_kind.statusLabel(_asInt(item['status']))} · v${item['version']}\n'
+                '${_kind.statusLabel(_asInt(item['status']))}\n'
                 '${_asList(item['teachers']).map((teacher) => _responsibleTeacherLabel(ResourceTeacher.fromJson(_asMap(teacher)))).join('、')}',
               ),
               trailing: IconButton(
@@ -1238,7 +1300,7 @@ class _TeacherAssessmentEditorState extends State<_TeacherAssessmentEditor> {
         _conflict = false;
       });
     } catch (error) {
-      if (mounted) setState(() => _error = '$error');
+      if (mounted) setState(() => _error = userFacingError(error));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -1301,7 +1363,9 @@ class _TeacherAssessmentEditorState extends State<_TeacherAssessmentEditor> {
       if (mounted) {
         setState(() {
           _conflict = error is ApiException && error.code == 1004002045;
-          _error = _conflict ? '他の講師が更新しました。最新の内容を再読み込みしてください。' : '$error';
+          _error = _conflict
+              ? '他の講師が更新しました。最新の内容を再読み込みしてください。'
+              : userFacingError(error);
         });
       }
     } finally {
@@ -1333,7 +1397,7 @@ class _TeacherAssessmentEditorState extends State<_TeacherAssessmentEditor> {
       await ItClassApi.instance._closeSharedExam(widget.id);
       if (mounted) Navigator.pop(context, true);
     } catch (error) {
-      if (mounted) setState(() => _error = '$error');
+      if (mounted) setState(() => _error = userFacingError(error));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1374,7 +1438,7 @@ class _TeacherAssessmentEditorState extends State<_TeacherAssessmentEditor> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Text(
-                          'ID ${widget.id} · v${_original!['version']} · ${widget.kind.statusLabel(_asInt(_original!['status']))}',
+                          widget.kind.statusLabel(_asInt(_original!['status'])),
                         ),
                         const SizedBox(height: 12),
                         for (final entry in _labels.entries)

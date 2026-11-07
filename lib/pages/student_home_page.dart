@@ -16,7 +16,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
   int _selectedExamLesson = 0;
   int _selectedCodeAssignment = 0;
   List<Topic> _apiTopics = const [];
-  List<SchoolClassroom> _apiClassrooms = const [];
   List<LearningVideo> _apiVideos = const [];
   List<Lesson> _apiLessons = const [];
   List<SchoolPracticeQuestion> _apiPracticeQuestions = const [];
@@ -24,9 +23,14 @@ class _StudentHomePageState extends State<StudentHomePage> {
   List<ExamQuestion> _apiExamQuestions = const [];
   List<StudentProfile> _chatContacts = const [];
   List<CodeAssignment> _apiCodeAssignments = const [];
-  int? _selectedClassroomId;
   String? _selectedLanguage;
   StudentProfile? _selectedChatContact;
+  bool _showTeacherDirectory = true;
+  String? _directoryTeacherKey;
+  bool _directoryConsultationBusy = false;
+  bool _directoryCreating = false;
+  String? _directoryError;
+  final Map<String, Future<int>> _resourceChatCreations = {};
   final Map<int, StudentProfile> _pendingChatContacts = {};
   int _chatRequestId = 0;
   int _contactsRequestId = 0;
@@ -64,59 +68,33 @@ class _StudentHomePageState extends State<StudentHomePage> {
 
   final List<ChatMessage> _teacherMessages = [];
 
-  bool _matchesResourceFilter(int? classroomId, String language) {
-    return (_selectedClassroomId == null ||
-            classroomId == _selectedClassroomId) &&
-        (_selectedLanguage == null ||
-            language.trim().toUpperCase() == _selectedLanguage);
+  bool _matchesResourceLanguage(String language) {
+    return _selectedLanguage == null ||
+        language.trim().toUpperCase() == _selectedLanguage!.toUpperCase();
   }
 
   List<LearningVideo> get _videos => _apiVideos
-      .where(
-        (video) => _matchesResourceFilter(video.classroomId, video.category),
-      )
+      .where((video) => _matchesResourceLanguage(video.category))
       .toList();
 
   List<Lesson> get _lessonsForLearning => _apiLessons
-      .where(
-        (lesson) => _matchesResourceFilter(lesson.classroomId, lesson.level),
-      )
+      .where((lesson) => _matchesResourceLanguage(lesson.level))
       .toList();
 
-  Map<int, String> get _classroomFilters {
-    final labels = <int, String>{
-      for (final classroom in _apiClassrooms)
-        if (classroom.id > 0) classroom.id: _classroomOptionLabel(classroom),
-    };
-    void add(int? id, String language) {
-      if (id == null || id <= 0) return;
-      labels.putIfAbsent(
-        id,
-        () => language.trim().isEmpty
-            ? '分類 #$id'
-            : '分類 #$id · ${language.trim()}',
-      );
+  List<String> get _resourceLanguages {
+    final labels = <String, String>{};
+    for (final language in [
+      ..._apiVideos.map((video) => video.category),
+      ..._apiLessons.map((lesson) => lesson.level),
+      ..._apiPracticeQuestions.map((question) => question.programmingLanguage),
+    ]) {
+      final name = language.trim();
+      if (name.isNotEmpty) labels.putIfAbsent(name.toUpperCase(), () => name);
     }
-
-    for (final video in _apiVideos) {
-      add(video.classroomId, video.category);
-    }
-    for (final lesson in _apiLessons) {
-      add(lesson.classroomId, lesson.level);
-    }
-    for (final question in _apiPracticeQuestions) {
-      add(question.classroomId, question.programmingLanguage);
-    }
-    return labels;
+    return labels.values.toList()..sort(
+      (left, right) => left.toUpperCase().compareTo(right.toUpperCase()),
+    );
   }
-
-  List<String> get _resourceLanguages => {
-    ..._apiVideos.map((video) => video.category.trim().toUpperCase()),
-    ..._apiLessons.map((lesson) => lesson.level.trim().toUpperCase()),
-    ..._apiPracticeQuestions.map(
-      (question) => question.programmingLanguage.trim().toUpperCase(),
-    ),
-  }.where((language) => language.isNotEmpty).toList()..sort();
 
   String _videoKey(LearningVideo video) =>
       '${video.id ?? video.videoUrl}:${video.contentVersion}';
@@ -129,10 +107,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
     final groups =
         <(int?, String, int?, int, String), List<SchoolPracticeQuestion>>{};
     for (final question in _apiPracticeQuestions) {
-      if (!_matchesResourceFilter(
-        question.classroomId,
-        question.programmingLanguage,
-      )) {
+      if (!_matchesResourceLanguage(question.programmingLanguage)) {
         continue;
       }
       final key = (
@@ -163,6 +138,92 @@ class _StudentHomePageState extends State<StudentHomePage> {
   }
 
   List<StudentProfile> get _teacherContacts => _chatContacts;
+
+  List<_StudentTeacherDirectoryEntry> get _teacherDirectory {
+    final entries = <String, _StudentTeacherDirectoryEntry>{};
+    void addResource(
+      String type,
+      int? id,
+      String title,
+      String language,
+      List<ResourceTeacher> teachers,
+    ) {
+      if (id == null || id <= 0) return;
+      final resource = _StudentConsultationResource(type, id, title, language);
+      for (final teacher in teachers) {
+        if (teacher.accountId <= 0 || teacher.status != 0) continue;
+        final key = '${teacher.accountId}';
+        final entry = entries.putIfAbsent(
+          key,
+          () => _StudentTeacherDirectoryEntry(key, teacher: teacher),
+        );
+        entry.resources[resource.key] = resource;
+      }
+    }
+
+    // Use the complete public resource responses, never the learning filter.
+    for (final video in _apiVideos) {
+      addResource(
+        'VIDEO',
+        video.id,
+        video.title,
+        video.category,
+        video.teachers,
+      );
+    }
+    for (final lesson in _apiLessons) {
+      addResource(
+        'DOCUMENT',
+        lesson.id,
+        lesson.title,
+        lesson.level,
+        lesson.teachers,
+      );
+    }
+    for (final exam in _apiExams) {
+      if (exam.isAvailable) {
+        // Exam summaries currently have no language field. Do not guess it.
+        addResource('EXAM', exam.id, exam.title, '', exam.teachers);
+      }
+    }
+    final seenConversations = <int>{};
+    for (final contact in _teacherContacts) {
+      final conversationId = contact.conversationId;
+      if (conversationId != null && !seenConversations.add(conversationId)) {
+        continue;
+      }
+      final accountId = contact.accountId;
+      final key = accountId != null && accountId > 0
+          ? '$accountId'
+          : 'history-${conversationId ?? '${contact.classroomId}:${contact.accountNo}'}';
+      final entry = entries.putIfAbsent(
+        key,
+        () => _StudentTeacherDirectoryEntry(key),
+      );
+      // Former teachers remain reachable for their original private histories.
+      entry.conversations.add(contact);
+    }
+    for (final entry in entries.values) {
+      entry.conversations.sort(_compareStudentChatContacts);
+    }
+    return entries.values.toList()..sort((left, right) {
+      final unread = (right.unreadCount > 0 ? 1 : 0).compareTo(
+        left.unreadCount > 0 ? 1 : 0,
+      );
+      if (unread != 0) return unread;
+      final latest = (right.latestMessageTime?.millisecondsSinceEpoch ?? 0)
+          .compareTo(left.latestMessageTime?.millisecondsSinceEpoch ?? 0);
+      if (latest != 0) return latest;
+      final name = left.name.compareTo(right.name);
+      return name != 0 ? name : left.key.compareTo(right.key);
+    });
+  }
+
+  bool get _teacherConversationVisible =>
+      _section == StudentSection.askTeacher &&
+      !_showTeacherDirectory &&
+      _directoryTeacherKey == null &&
+      _selectedChatContact != null;
 
   List<CodeAssignment> get _codeAssignmentsForScoring => _apiCodeAssignments;
 
@@ -208,7 +269,13 @@ class _StudentHomePageState extends State<StudentHomePage> {
           if (mobile && _section == StudentSection.learning)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: _learningModeSelector(),
+              child: Column(
+                children: [
+                  _languageSelector(),
+                  const SizedBox(height: 12),
+                  _learningModeSelector(),
+                ],
+              ),
             ),
           if (_dataLoading) const LinearProgressIndicator(),
           if (_apiError != null)
@@ -230,6 +297,24 @@ class _StudentHomePageState extends State<StudentHomePage> {
       topActions: const [],
     );
   }
+
+  Widget _languageSelector() => DropdownButtonFormField<String>(
+    key: ValueKey('language-$_selectedLanguage'),
+    initialValue: _resourceLanguages.contains(_selectedLanguage)
+        ? _selectedLanguage
+        : '',
+    isExpanded: true,
+    decoration: const InputDecoration(
+      labelText: '学習言語',
+      prefixIcon: Icon(Icons.code_rounded),
+    ),
+    items: [
+      const DropdownMenuItem(value: '', child: Text('すべての言語')),
+      for (final language in _resourceLanguages)
+        DropdownMenuItem(value: language, child: Text(language)),
+    ],
+    onChanged: (value) => _changeResourceLanguage(value == '' ? null : value),
+  );
 
   Widget _learningModeSelector() => DropdownButtonFormField<LearningMode>(
     key: ValueKey(_learningMode),
@@ -281,70 +366,8 @@ class _StudentHomePageState extends State<StudentHomePage> {
         return _HistoryPanel(
           title: _learningModeLabel(_learningMode),
           children: [
-            const Padding(
-              padding: EdgeInsets.only(bottom: 8),
-              child: Text(
-                '教室',
-                style: TextStyle(
-                  color: _AppPalette.muted,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-            DropdownButtonFormField<int>(
-              key: ValueKey(_selectedClassroomId),
-              initialValue: _classroomFilters.containsKey(_selectedClassroomId)
-                  ? _selectedClassroomId
-                  : 0,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.filter_alt_outlined),
-                helperText: '任意の分類です。教室への参加は不要です。',
-              ),
-              items: [
-                const DropdownMenuItem(value: 0, child: Text('すべて')),
-                for (final entry in _classroomFilters.entries)
-                  DropdownMenuItem(
-                    value: entry.key,
-                    child: Text(entry.value, overflow: TextOverflow.ellipsis),
-                  ),
-              ],
-              onChanged: (value) => _changeResourceFilter(
-                classroomId: value == 0 ? null : value,
-                language: _selectedLanguage,
-              ),
-            ),
-            if (_resourceLanguages.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                key: ValueKey(_selectedLanguage),
-                initialValue: _resourceLanguages.contains(_selectedLanguage)
-                    ? _selectedLanguage
-                    : '',
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: '言語・分類'),
-                items: [
-                  const DropdownMenuItem(value: '', child: Text('すべての言語・分類')),
-                  for (final language in _resourceLanguages)
-                    DropdownMenuItem(value: language, child: Text(language)),
-                ],
-                onChanged: (value) => _changeResourceFilter(
-                  classroomId: _selectedClassroomId,
-                  language: value == '' ? null : value,
-                ),
-              ),
-            ],
+            _languageSelector(),
             const Divider(height: 24, color: _AppPalette.line),
-            const Padding(
-              padding: EdgeInsets.only(bottom: 8),
-              child: Text(
-                '学習タイプ',
-                style: TextStyle(
-                  color: _AppPalette.muted,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
             _learningModeSelector(),
             const Divider(height: 24, color: _AppPalette.line),
             if (_apiError != null)
@@ -443,39 +466,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
           ],
         );
       case StudentSection.askTeacher:
-        return _HistoryPanel(
-          title: '先生との会話',
-          children: [
-            if (_chatError != null) ...[
-              Text(
-                _chatError!,
-                style: const TextStyle(color: _AppPalette.coral),
-              ),
-              TextButton(
-                onPressed: _refreshTeacherContacts,
-                child: const Text('再読み込み'),
-              ),
-            ],
-            if (_teacherContacts.isEmpty)
-              const _InlineNotice(
-                tone: _NoticeTone.warning,
-                title: 'まだ先生との会話がありません',
-                message: '動画・教材・練習問題・テストの「先生に相談」から担当の先生を選んでください。',
-              ),
-            for (final contact in _teacherContacts)
-              _CompactListCard(
-                selected: _sameChatContact(_selectedChatContact, contact),
-                title: contact.name,
-                subtitle: _contactResourceLabel(contact),
-                detail: contact.lastQuestion,
-                badge: contact.unreadCount > 0
-                    ? '${contact.unreadCount}件'
-                    : null,
-                showNotificationDot: contact.unreadCount > 0,
-                onTap: () => _selectTeacherContact(contact),
-              ),
-          ],
-        );
+        return _teacherDirectoryPanel();
       case StudentSection.codeScoring:
         return _HistoryPanel(
           title: 'コード課題',
@@ -648,41 +639,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
           ],
         );
       case StudentSection.askTeacher:
-        final contact = _selectedChatContact;
-        if (contact == null) {
-          return const Center(
-            child: _InlineNotice(
-              tone: _NoticeTone.warning,
-              title: '教材から先生に相談できます',
-              message: '動画・教材・練習問題・テストの「先生に相談」から担当の先生を選んでください。過去の会話は履歴から開けます。',
-            ),
-          );
-        }
-        if (_chatLoading) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (_chatConversationId == null) {
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(_chatError ?? '会話を読み込めませんでした。'),
-                TextButton(
-                  onPressed: () => _selectTeacherContact(contact),
-                  child: const Text('再試行'),
-                ),
-              ],
-            ),
-          );
-        }
-        return _ChatWorkspace(
-          title: '先生に質問：${contact.name}',
-          emptyHint: '${_contactResourceLabel(contact)}について先生に相談できます。',
-          messages: _teacherMessages,
-          controller: _teacherInput,
-          sendLabel: _teacherSending ? '送信中…' : '先生へ送信',
-          onSend: _sendTeacherMessage,
-        );
+        return _teacherContent();
       case StudentSection.settings:
         return _ProfileSettingsWorkspace(
           roleTitle: '学生設定',
@@ -698,6 +655,320 @@ class _StudentHomePageState extends State<StudentHomePage> {
             setState(() => ItClassSession.updateProfile(profile));
           },
         );
+    }
+  }
+
+  Widget _teacherDirectoryPanel() {
+    final directory = _teacherDirectory;
+    return ListView(
+      key: const ValueKey('student-teacher-directory'),
+      padding: const EdgeInsets.all(20),
+      children: [
+        const _SectionHeader(
+          icon: Icons.people_outline,
+          title: '先生一覧',
+          subtitle: 'すべての学習言語の担当の先生です。先生を選んで相談できます。',
+        ),
+        if (_directoryCreating) const LinearProgressIndicator(),
+        if (_directoryError != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Text(
+              _directoryError!,
+              style: const TextStyle(color: _AppPalette.coral),
+            ),
+          ),
+        if (_chatError != null) ...[
+          Text(_chatError!, style: const TextStyle(color: _AppPalette.coral)),
+          TextButton(
+            onPressed: _refreshTeacherContacts,
+            child: const Text('会話履歴を再読み込み'),
+          ),
+        ],
+        const SizedBox(height: 16),
+        if (directory.isEmpty)
+          _InlineNotice(
+            tone: _NoticeTone.warning,
+            title: _dataLoading ? '担当の先生を読み込み中です' : '担当の先生がまだ登録されていません',
+            message: '公開教材に担当の先生が登録されると、ここから相談できます。',
+          ),
+        for (final entry in directory)
+          KeyedSubtree(
+            key: ValueKey('teacher-directory-${entry.key}'),
+            child: _CompactListCard(
+              selected:
+                  !_showTeacherDirectory &&
+                  (_directoryTeacherKey == entry.key ||
+                      (_directoryTeacherKey == null &&
+                          '${_selectedChatContact?.accountId}' == entry.key)),
+              title: entry.name,
+              subtitle: entry.languageLabel,
+              detail: entry.conversations.isNotEmpty
+                  ? entry.conversations.first.lastQuestion
+                  : '${entry.resources.length}件の資料について相談できます。',
+              badge: entry.unreadCount > 0 ? '${entry.unreadCount}件未読' : null,
+              showNotificationDot: entry.unreadCount > 0,
+              onTap: () {
+                if (_dataLoading || _directoryConsultationBusy) return;
+                if (entry.conversations.isEmpty) {
+                  unawaited(_consultDirectoryTeacher(entry));
+                } else {
+                  setState(() {
+                    _showTeacherDirectory = false;
+                    _directoryTeacherKey = entry.key;
+                    _directoryError = null;
+                  });
+                }
+              },
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _teacherContent() {
+    final directory = _teacherDirectory;
+    _StudentTeacherDirectoryEntry? selectedTeacher;
+    for (final entry in directory) {
+      if (entry.key == _directoryTeacherKey) selectedTeacher = entry;
+    }
+    if (_showTeacherDirectory ||
+        (_selectedChatContact == null && selectedTeacher == null)) {
+      if (MediaQuery.sizeOf(context).width < 720) {
+        return _teacherDirectoryPanel();
+      }
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.chat_bubble_outline_rounded,
+                size: 40,
+                color: _AppPalette.muted,
+              ),
+              SizedBox(height: 16),
+              Text(
+                '先生を選んでください',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              Text(
+                '左の先生一覧から相談する先生を選んでください。過去の会話も先生ごとに確認できます。',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: _AppPalette.muted),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => setState(() {
+              _showTeacherDirectory = true;
+              _directoryTeacherKey = null;
+            }),
+            icon: const Icon(Icons.arrow_back_rounded),
+            label: const Text('先生一覧'),
+          ),
+        ),
+        if (_directoryCreating) const LinearProgressIndicator(),
+        Expanded(
+          child: selectedTeacher != null
+              ? _teacherOverview(selectedTeacher)
+              : _selectedTeacherChat(),
+        ),
+      ],
+    );
+  }
+
+  Widget _teacherOverview(_StudentTeacherDirectoryEntry entry) => ListView(
+    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+    children: [
+      _SectionHeader(
+        icon: Icons.person_outline,
+        title: entry.name,
+        subtitle: entry.languageLabel,
+      ),
+      const SizedBox(height: 12),
+      if (entry.resources.isNotEmpty)
+        OutlinedButton.icon(
+          onPressed: _dataLoading || _directoryConsultationBusy
+              ? null
+              : () => unawaited(_consultDirectoryTeacher(entry)),
+          icon: const Icon(Icons.add_comment_outlined),
+          label: const Text('新しい相談'),
+        )
+      else
+        const Text('現在相談できる担当資料はありません。過去の会話を確認できます。'),
+      if (_directoryError != null)
+        Text(
+          _directoryError!,
+          style: const TextStyle(color: _AppPalette.coral),
+        ),
+      const SizedBox(height: 20),
+      const Text('会話履歴', style: TextStyle(fontWeight: FontWeight.w800)),
+      const SizedBox(height: 12),
+      for (final contact in entry.conversations)
+        KeyedSubtree(
+          key: ValueKey('teacher-conversation-${contact.conversationId}'),
+          child: _CompactListCard(
+            title: _contactResourceLabel(contact),
+            subtitle: contact.name,
+            detail: contact.lastQuestion,
+            badge: contact.unreadCount > 0 ? '${contact.unreadCount}件未読' : null,
+            showNotificationDot: contact.unreadCount > 0,
+            onTap: () => _selectTeacherContact(contact),
+          ),
+        ),
+    ],
+  );
+
+  Widget _selectedTeacherChat() {
+    final contact = _selectedChatContact;
+    if (contact == null) return const SizedBox.shrink();
+    if (_chatLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_chatConversationId == null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(_chatError ?? '会話を読み込めませんでした。'),
+            TextButton(
+              onPressed: () => _selectTeacherContact(contact),
+              child: const Text('再試行'),
+            ),
+          ],
+        ),
+      );
+    }
+    return _ChatWorkspace(
+      title: '先生に質問：${contact.name}',
+      emptyHint: '${_contactResourceLabel(contact)}について先生に相談できます。',
+      messages: _teacherMessages,
+      controller: _teacherInput,
+      sendLabel: _teacherSending ? '送信中…' : '先生へ送信',
+      onSend: _sendTeacherMessage,
+    );
+  }
+
+  Future<void> _consultDirectoryTeacher(
+    _StudentTeacherDirectoryEntry entry,
+  ) async {
+    final teacher = entry.teacher;
+    if (_directoryConsultationBusy ||
+        teacher == null ||
+        entry.resources.isEmpty) {
+      return;
+    }
+    setState(() {
+      _directoryConsultationBusy = true;
+      _directoryError = null;
+    });
+    try {
+      final resources = entry.resources.values.toList();
+      final resource = resources.length == 1
+          ? resources.single
+          : await showDialog<_StudentConsultationResource>(
+              context: context,
+              builder: (dialogContext) => AlertDialog(
+                title: const Text('相談する資料を選択'),
+                content: SizedBox(
+                  width: 400,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 400),
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final resource in resources)
+                          ListTile(
+                            key: ValueKey(
+                              'teacher-resource-${resource.type}-${resource.id}',
+                            ),
+                            title: Text(resource.title),
+                            subtitle: Text(resource.label),
+                            onTap: () =>
+                                Navigator.of(dialogContext).pop(resource),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: const Text('キャンセル'),
+                  ),
+                ],
+              ),
+            );
+      if (!mounted || resource == null) return;
+      setState(() => _directoryCreating = true);
+      // The backend revalidates the teacher's current resource responsibility.
+      final conversationId = await _getOrCreateResourceChat(
+        resource.type,
+        resource.id,
+        teacher.accountId,
+      );
+      if (!mounted) return;
+      await _openResourceConversation(
+        conversationId,
+        teacher,
+        resource.type,
+        resource.id,
+        resource.title,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      final message = '相談を開始できませんでした：$error';
+      setState(() => _directoryError = message);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _directoryConsultationBusy = false;
+          _directoryCreating = false;
+        });
+      }
+    }
+  }
+
+  Future<int> _getOrCreateResourceChat(
+    String type,
+    int id,
+    int peerAccountId,
+  ) async {
+    final key = '$type:$id:$peerAccountId';
+    final existing = _resourceChatCreations[key];
+    if (existing != null) return existing;
+    final request = ItClassApi.instance
+        .getOrCreateChat(
+          peerAccountId: peerAccountId,
+          resourceType: type,
+          resourceId: id,
+        )
+        .then((conversationId) {
+          if (conversationId <= 0) throw const ApiException('会話を作成できませんでした。');
+          return conversationId;
+        });
+    _resourceChatCreations[key] = request;
+    try {
+      return await request;
+    } finally {
+      if (identical(_resourceChatCreations[key], request)) {
+        _resourceChatCreations.remove(key);
+      }
     }
   }
 
@@ -782,7 +1053,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
     child: _InlineNotice(
       tone: _NoticeTone.warning,
       title: '$resourceがありません',
-      message: _selectedClassroomId != null || _selectedLanguage != null
+      message: _selectedLanguage != null
           ? 'この条件に一致する公開リソースはありません。絞り込みを「すべて」に変更してください。'
           : '公開中の$resourceはまだありません。公開されるとここに表示されます。',
     ),
@@ -794,6 +1065,8 @@ class _StudentHomePageState extends State<StudentHomePage> {
       key: ValueKey('$type:$id'),
       resourceType: type,
       resourceId: id,
+      createConversation: (teacher) =>
+          _getOrCreateResourceChat(type, id, teacher.accountId),
       onConversationCreated: (conversationId, teacher) => unawaited(
         _openResourceConversation(conversationId, teacher, type, id, name),
       ),
@@ -1020,13 +1293,8 @@ class _StudentHomePageState extends State<StudentHomePage> {
       }
     }
 
-    // Membership is optional metadata. Every public endpoint is independent.
+    // Public resources do not depend on classroom membership.
     await Future.wait([
-      load(
-        '分類',
-        ItClassApi.instance.myClassrooms,
-        (value) => _apiClassrooms = value,
-      ),
       load(
         'AI会話',
         () => ItClassApi.instance.aiConversations(),
@@ -1077,18 +1345,14 @@ class _StudentHomePageState extends State<StudentHomePage> {
       _apiError = errors.isEmpty
           ? null
           : '一部のデータを読み込めませんでした。\n${errors.join('\n')}';
-      if (!_classroomFilters.containsKey(_selectedClassroomId)) {
-        _selectedClassroomId = null;
-      }
       if (!_resourceLanguages.contains(_selectedLanguage)) {
         _selectedLanguage = null;
       }
     });
   }
 
-  void _changeResourceFilter({int? classroomId, String? language}) {
+  void _changeResourceLanguage(String? language) {
     setState(() {
-      _selectedClassroomId = classroomId;
       _selectedLanguage = language;
       _selectedLesson = 0;
       _selectedPracticeChapter = 0;
@@ -1259,6 +1523,8 @@ class _StudentHomePageState extends State<StudentHomePage> {
   Future<void> _selectTeacherContact(StudentProfile contact) async {
     final requestId = ++_chatRequestId;
     setState(() {
+      _showTeacherDirectory = false;
+      _directoryTeacherKey = null;
       _selectedChatContact = contact;
       _chatConversationId = null;
       _chatLoading = true;
@@ -1343,11 +1609,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
         if (selected != null) _selectedChatContact = selected;
         if (!_chatLoading && _chatConversationId != null) _chatError = null;
       });
-      if (_selectedChatContact == null &&
-          merged.isNotEmpty &&
-          _section == StudentSection.askTeacher) {
-        await _selectTeacherContact(merged.first);
-      }
     } catch (error) {
       if (!mounted || requestId != _contactsRequestId) return;
       setState(() => _chatError = '会話一覧の更新に失敗しました：$error');
@@ -1359,7 +1620,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
     if (message.conversationId != null &&
         message.conversationId == _chatConversationId) {
       setState(() => _upsertTeacherMessage(message));
-      if (_section == StudentSection.askTeacher && !_chatLoading) {
+      if (_teacherConversationVisible && !_chatLoading) {
         _markLatestTeacherMessageRead([message]);
       }
     }
@@ -1390,7 +1651,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
     final latestId = incoming
         .map((message) => message.id!)
         .reduce((left, right) => left > right ? left : right);
-    if (_section != StudentSection.askTeacher) return;
+    if (!_teacherConversationVisible) return;
     unawaited(_readTeacherMessages(conversationId, latestId));
   }
 
@@ -1427,16 +1688,6 @@ String _learningModeLabel(LearningMode mode) {
   }
 }
 
-String _classroomOptionLabel(SchoolClassroom classroom) {
-  final language = classroom.programmingLanguage.trim();
-  if (language.isEmpty) return classroom.name;
-  final languageLabel = language.toUpperCase();
-  if (classroom.name.toUpperCase().contains(languageLabel)) {
-    return classroom.name;
-  }
-  return '$languageLabel教室 · ${classroom.name}';
-}
-
 class _PracticeLessonGroup {
   const _PracticeLessonGroup({
     required this.chapterNo,
@@ -1449,6 +1700,84 @@ class _PracticeLessonGroup {
   final String title;
   final String language;
   final List<SchoolPracticeQuestion> questions;
+}
+
+class _StudentConsultationResource {
+  const _StudentConsultationResource(
+    this.type,
+    this.id,
+    this.title,
+    this.language,
+  );
+
+  final String type;
+  final int id;
+  final String title;
+  final String language;
+
+  String get key => '$type:$id';
+  String get label {
+    final kind = switch (type) {
+      'VIDEO' => '動画',
+      'DOCUMENT' => '教材',
+      'EXAM' => 'テスト',
+      _ => '資料',
+    };
+    return '$kind · ${language.trim().isEmpty ? '言語未設定' : language.trim()}';
+  }
+}
+
+class _StudentTeacherDirectoryEntry {
+  _StudentTeacherDirectoryEntry(this.key, {this.teacher});
+
+  final String key;
+  final ResourceTeacher? teacher;
+  final Map<String, _StudentConsultationResource> resources = {};
+  final List<StudentProfile> conversations = [];
+
+  String get name {
+    if (teacher != null) return _resourceTeacherName(teacher!);
+    if (conversations.isEmpty) return '過去の会話';
+    final contact = conversations.first;
+    return contact.name.trim().isNotEmpty
+        ? contact.name
+        : contact.accountNo?.trim().isNotEmpty == true
+        ? contact.accountNo!
+        : '過去の会話';
+  }
+
+  String get languageLabel {
+    if (resources.isEmpty) return '過去の会話（現在の担当資料なし）';
+    final names = <String, String>{};
+    for (final resource in resources.values) {
+      final language = resource.language.trim();
+      if (language.isNotEmpty) {
+        names.putIfAbsent(language.toUpperCase(), () => language);
+      }
+    }
+    final languages = names.values.toList()
+      ..sort(
+        (left, right) => left.toUpperCase().compareTo(right.toUpperCase()),
+      );
+    return '担当言語：${languages.isEmpty ? '言語未設定' : languages.join(' / ')}';
+  }
+
+  int get unreadCount => conversations.fold(
+    0,
+    (total, contact) =>
+        total + (contact.unreadCount > 0 ? contact.unreadCount : 0),
+  );
+  DateTime? get latestMessageTime =>
+      conversations.isEmpty ? null : conversations.first.lastMessageTime;
+}
+
+int _compareStudentChatContacts(StudentProfile left, StudentProfile right) {
+  final time = (right.lastMessageTime?.millisecondsSinceEpoch ?? 0).compareTo(
+    left.lastMessageTime?.millisecondsSinceEpoch ?? 0,
+  );
+  return time != 0
+      ? time
+      : (right.conversationId ?? 0).compareTo(left.conversationId ?? 0);
 }
 
 bool _sameChatContact(StudentProfile? left, StudentProfile right) {
@@ -1484,7 +1813,7 @@ String _contactResourceLabel(StudentProfile contact) {
 String _resourceTeacherName(ResourceTeacher teacher) {
   if (teacher.realName.trim().isNotEmpty) return teacher.realName;
   if (teacher.accountNo.trim().isNotEmpty) return teacher.accountNo;
-  return '先生 #${teacher.accountId}';
+  return '担当の先生';
 }
 
 class _StudentResourceConsultationButton extends StatefulWidget {
@@ -1492,11 +1821,13 @@ class _StudentResourceConsultationButton extends StatefulWidget {
     super.key,
     required this.resourceType,
     required this.resourceId,
+    required this.createConversation,
     required this.onConversationCreated,
   });
 
   final String resourceType;
   final int resourceId;
+  final Future<int> Function(ResourceTeacher teacher) createConversation;
   final void Function(int conversationId, ResourceTeacher teacher)
   onConversationCreated;
 
@@ -1557,7 +1888,8 @@ class _StudentResourceConsultationButtonState
       if (!mounted) return;
       final available = {
         for (final teacher in teachers)
-          if (teacher.accountId > 0) teacher.accountId: teacher,
+          if (teacher.accountId > 0 && teacher.status == 0)
+            teacher.accountId: teacher,
       }.values.toList();
       if (available.isEmpty) {
         setState(() => _error = '現在相談できる担当の先生はいません。時間をおいて再確認してください。');
@@ -1613,11 +1945,7 @@ class _StudentResourceConsultationButtonState
       if (!mounted) return;
       setState(() => _choosingTeacher = false);
       if (teacher == null) return;
-      final conversationId = await ItClassApi.instance.getOrCreateChat(
-        peerAccountId: teacher.accountId,
-        resourceType: widget.resourceType,
-        resourceId: widget.resourceId,
-      );
+      final conversationId = await widget.createConversation(teacher);
       if (!mounted) return;
       if (conversationId <= 0) throw const ApiException('会話を作成できませんでした。');
       widget.onConversationCreated(conversationId, teacher);

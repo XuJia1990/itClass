@@ -285,7 +285,8 @@ void main() {
 
     expect(find.text('学生ログイン'), findsNothing);
     expect(find.text('AI教室：動画学習'), findsOneWidget);
-    expect(find.text('教室'), findsOneWidget);
+    expect(find.text('学習言語'), findsOneWidget);
+    expect(find.text('教室'), findsNothing);
 
     expect(find.text('先生ログイン'), findsNothing);
   });

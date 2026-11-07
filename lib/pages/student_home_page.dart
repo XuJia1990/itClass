@@ -24,6 +24,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
   List<StudentProfile> _chatContacts = const [];
   List<CodeAssignment> _apiCodeAssignments = const [];
   String? _selectedLanguage;
+  bool _languageSelectionInitialized = false;
   StudentProfile? _selectedChatContact;
   bool _showTeacherDirectory = true;
   String? _directoryTeacherKey;
@@ -298,45 +299,63 @@ class _StudentHomePageState extends State<StudentHomePage> {
     );
   }
 
-  Widget _languageSelector() => DropdownButtonFormField<String>(
-    key: ValueKey('language-$_selectedLanguage'),
-    initialValue: _resourceLanguages.contains(_selectedLanguage)
-        ? _selectedLanguage
-        : '',
-    isExpanded: true,
-    decoration: const InputDecoration(
-      labelText: '学習言語',
-      prefixIcon: Icon(Icons.code_rounded),
-    ),
-    items: [
-      const DropdownMenuItem(value: '', child: Text('すべての言語')),
-      for (final language in _resourceLanguages)
-        DropdownMenuItem(value: language, child: Text(language)),
+  Widget _languageSelector() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      const Text(
+        '学習言語',
+        style: TextStyle(color: _AppPalette.muted, fontWeight: FontWeight.w700),
+      ),
+      const SizedBox(height: 8),
+      DropdownButtonFormField<String>(
+        key: ValueKey('language-$_selectedLanguage'),
+        initialValue: _resourceLanguages.contains(_selectedLanguage)
+            ? _selectedLanguage
+            : '',
+        isExpanded: true,
+        decoration: const InputDecoration(prefixIcon: Icon(Icons.code_rounded)),
+        items: [
+          const DropdownMenuItem(value: '', child: Text('すべての言語')),
+          for (final language in _resourceLanguages)
+            DropdownMenuItem(value: language, child: Text(language)),
+        ],
+        onChanged: (value) =>
+            _changeResourceLanguage(value == '' ? null : value),
+      ),
     ],
-    onChanged: (value) => _changeResourceLanguage(value == '' ? null : value),
   );
 
-  Widget _learningModeSelector() => DropdownButtonFormField<LearningMode>(
-    key: ValueKey(_learningMode),
-    initialValue: _learningMode,
-    isExpanded: true,
-    decoration: const InputDecoration(
-      labelText: '学習タイプ',
-      prefixIcon: Icon(Icons.tune_rounded),
-    ),
-    items: const [
-      DropdownMenuItem(value: LearningMode.video, child: Text('動画学習')),
-      DropdownMenuItem(value: LearningMode.document, child: Text('文書学習')),
-      DropdownMenuItem(value: LearningMode.questionBank, child: Text('問題バンク')),
+  Widget _learningModeSelector() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      const Text(
+        '学習タイプ',
+        style: TextStyle(color: _AppPalette.muted, fontWeight: FontWeight.w700),
+      ),
+      const SizedBox(height: 8),
+      DropdownButtonFormField<LearningMode>(
+        key: ValueKey(_learningMode),
+        initialValue: _learningMode,
+        isExpanded: true,
+        decoration: const InputDecoration(prefixIcon: Icon(Icons.tune_rounded)),
+        items: const [
+          DropdownMenuItem(value: LearningMode.video, child: Text('動画学習')),
+          DropdownMenuItem(value: LearningMode.document, child: Text('文書学習')),
+          DropdownMenuItem(
+            value: LearningMode.questionBank,
+            child: Text('問題バンク'),
+          ),
+        ],
+        onChanged: (mode) {
+          if (mode == null) return;
+          setState(() {
+            _learningMode = mode;
+            _selectedLesson = 0;
+            _selectedPracticeChapter = 0;
+          });
+        },
+      ),
     ],
-    onChanged: (mode) {
-      if (mode == null) return;
-      setState(() {
-        _learningMode = mode;
-        _selectedLesson = 0;
-        _selectedPracticeChapter = 0;
-      });
-    },
   );
 
   Widget _studentMiddlePanel(BuildContext context) {
@@ -1345,8 +1364,14 @@ class _StudentHomePageState extends State<StudentHomePage> {
       _apiError = errors.isEmpty
           ? null
           : '一部のデータを読み込めませんでした。\n${errors.join('\n')}';
-      if (!_resourceLanguages.contains(_selectedLanguage)) {
-        _selectedLanguage = null;
+      final languages = _resourceLanguages;
+      if (!_languageSelectionInitialized ||
+          (_selectedLanguage != null &&
+              !languages.contains(_selectedLanguage))) {
+        _selectedLanguage = languages.isEmpty ? null : languages.first;
+        _languageSelectionInitialized = languages.isNotEmpty;
+        _selectedLesson = 0;
+        _selectedPracticeChapter = 0;
       }
     });
   }
@@ -1354,6 +1379,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
   void _changeResourceLanguage(String? language) {
     setState(() {
       _selectedLanguage = language;
+      _languageSelectionInitialized = true;
       _selectedLesson = 0;
       _selectedPracticeChapter = 0;
     });
@@ -1432,9 +1458,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
   Future<void> _logout() async {
     await ItClassApi.instance.logout();
     if (!mounted) return;
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => const LoginPage()),
-    );
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   void _startNewAiTopic() {

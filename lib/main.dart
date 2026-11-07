@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -18,12 +19,16 @@ part 'pages/teacher_home_page.dart';
 part 'shared/widgets.dart';
 part 'shared/models.dart';
 part 'shared/api.dart';
+part 'shared/session.dart';
 part 'shared/teacher_resources.dart';
 part 'shared/mock_data.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const ItClassApp());
 }
+
+final itClassNavigatorKey = GlobalKey<NavigatorState>();
 
 enum StudentSection {
   aiChat,
@@ -49,6 +54,7 @@ class ItClassApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: itClassNavigatorKey,
       title: 'IT教師',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -121,7 +127,7 @@ class ItClassApp extends StatelessWidget {
           displayColor: _AppPalette.ink,
         ),
       ),
-      home: const LoginPage(),
+      home: const _SessionEntry(),
     );
   }
 }

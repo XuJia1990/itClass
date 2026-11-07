@@ -7,23 +7,6 @@ const int questionTypeSingleChoice = 1;
 const int paperStatusReady = 10;
 const int examResultPublishImmediate = 0;
 
-class ItClassSession {
-  ItClassSession._();
-
-  static AuthSession? current;
-
-  static bool get isSignedIn => current != null;
-
-  static void clear() {
-    SchoolChatRealtime.instance.disconnect();
-    current = null;
-  }
-
-  static void updateProfile(MemberProfile profile) {
-    current = current?.copyWithProfile(profile);
-  }
-}
-
 class AuthSession {
   const AuthSession({
     required this.userId,
@@ -70,6 +53,34 @@ class AuthSession {
   final String programmingLanguage;
 
   String get displayName => nickname.trim().isEmpty ? realName : nickname;
+
+  bool get isUsable =>
+      userId > 0 &&
+      schoolAccountId > 0 &&
+      accessToken.isNotEmpty &&
+      refreshToken.isNotEmpty &&
+      (schoolAccountType == schoolAccountTypeStudent ||
+          schoolAccountType == schoolAccountTypeTeacher);
+
+  Map<String, dynamic> toJson() => {
+    'userId': userId,
+    'accessToken': accessToken,
+    'refreshToken': refreshToken,
+    'schoolAccountId': schoolAccountId,
+    'schoolAccountType': schoolAccountType,
+    'realName': realName,
+    'nickname': nickname,
+    'avatar': avatar,
+    'email': email,
+    'mobile': mobile,
+    'programmingLanguage': programmingLanguage,
+  };
+
+  AuthSession withTokens(Map<String, dynamic> tokens) => AuthSession.fromJson({
+    ...toJson(),
+    'accessToken': tokens['accessToken'],
+    'refreshToken': tokens['refreshToken'] ?? refreshToken,
+  });
 
   AuthSession copyWithProfile(MemberProfile profile) {
     return AuthSession(
@@ -392,10 +403,10 @@ class ExamAttemptPayload {
 }
 
 class ItClassApi {
-  ItClassApi._() : _client = http.Client();
+  ItClassApi._() : _client = http.Client(), _realtimeEnabled = true;
 
   @visibleForTesting
-  ItClassApi.forTesting(this._client);
+  ItClassApi.forTesting(this._client) : _realtimeEnabled = false;
 
   static ItClassApi _instance = ItClassApi._();
   static ItClassApi get instance => _instance;
@@ -410,28 +421,92 @@ class ItClassApi {
   );
 
   final http.Client _client;
+  final bool _realtimeEnabled;
+  Future<void>? _refreshing;
+  int? _refreshGeneration;
+
+  void connectRealtime() {
+    if (_realtimeEnabled) SchoolChatRealtime.instance.connect();
+  }
 
   Future<AuthSession> accountLogin({
     required String account,
     required String password,
+    int? expectedAccountType,
   }) async {
+    final generation = ItClassSession.generation;
     final data = await _post<Map<String, dynamic>>(
       '/member/auth/account-login',
       body: {'username': account, 'password': password},
     );
     final session = AuthSession.fromJson(data);
-    ItClassSession.current = session;
-    SchoolChatRealtime.instance.connect();
+    if (expectedAccountType != null &&
+        session.schoolAccountType != expectedAccountType) {
+      throw const ApiException('このアカウントでは選択した画面にログインできません。');
+    }
+    await ItClassSession.start(session, generation);
+    connectRealtime();
     return session;
   }
 
   Future<void> logout() async {
+    // Capture the old authorization before clearing it locally.
+    final request = _post<dynamic>('/member/auth/logout');
+    final clearing = ItClassSession.clear();
     try {
-      await _post<dynamic>('/member/auth/logout');
+      await request.timeout(const Duration(seconds: 8));
     } catch (_) {
       // The UI should still return to the login screen when logout fails.
     } finally {
-      ItClassSession.clear();
+      await clearing;
+    }
+  }
+
+  Future<void> _refreshSession(String failedToken, int generation) async {
+    final session = ItClassSession.current;
+    if (session == null || ItClassSession.generation != generation) {
+      throw const ApiException('再度ログインしてください。', code: 401);
+    }
+    if (session.accessToken != failedToken) return;
+    if (_refreshing != null && _refreshGeneration == generation) {
+      return _refreshing!;
+    }
+    final operation = _renewSession(session, generation);
+    _refreshing = operation;
+    _refreshGeneration = generation;
+    try {
+      await operation;
+    } finally {
+      if (identical(_refreshing, operation)) _refreshing = null;
+    }
+  }
+
+  Future<void> _renewSession(AuthSession session, int generation) async {
+    try {
+      final data = await _post<Map<String, dynamic>>(
+        '/member/auth/refresh-token',
+        query: {'refreshToken': session.refreshToken},
+      );
+      if (ItClassSession.generation != generation ||
+          ItClassSession.current == null) {
+        throw const ApiException('ログイン処理がキャンセルされました。', code: 401);
+      }
+      if (_asInt(data['userId']) != session.userId ||
+          _asString(data['accessToken']).isEmpty) {
+        throw const ApiException('再度ログインしてください。', code: 401);
+      }
+      // Refresh responses contain tokens only; keep the current school role/profile.
+      await ItClassSession.replace(
+        ItClassSession.current!.withTokens(data),
+        generation,
+      );
+      if (ItClassSession.generation == generation) connectRealtime();
+    } on ApiException catch (error) {
+      if ((error.code == 400 || error.code == 401) &&
+          ItClassSession.generation == generation) {
+        await ItClassSession.clear();
+      }
+      rethrow;
     }
   }
 
@@ -637,7 +712,10 @@ class ItClassApi {
   Future<String> uploadFile(
     PlatformFile file, {
     String directory = 'itclass',
+    bool retryAuthentication = true,
   }) async {
+    final generation = ItClassSession.generation;
+    final token = ItClassSession.current?.accessToken;
     final uri = _uri('/infra/file/upload');
     final request = http.MultipartRequest('POST', uri);
     request.headers.addAll(_headers(json: false));
@@ -681,7 +759,24 @@ class ItClassApi {
       final response = await http.Response.fromStream(streamed);
       stopwatch.stop();
       _logResponse(response, elapsed: stopwatch.elapsed);
-      return _decodeResponse<String>(response);
+      try {
+        return _decodeResponse<String>(response);
+      } on ApiException catch (error) {
+        if (error.code != 401 || token == null) rethrow;
+        if (!retryAuthentication) {
+          if (generation == ItClassSession.generation) {
+            await ItClassSession.clear();
+          }
+          rethrow;
+        }
+        await _refreshSession(token, generation);
+        if (generation != ItClassSession.generation) rethrow;
+        return uploadFile(
+          file,
+          directory: directory,
+          retryAuthentication: false,
+        );
+      }
     } catch (error, stackTrace) {
       _logError('POST', uri, error, stackTrace);
       rethrow;
@@ -1136,10 +1231,16 @@ class ItClassApi {
     String path, {
     Map<String, String>? query,
     Object? body,
+    bool retryAuthentication = true,
   }) async {
     final uri = _uri(path, query);
+    final generation = ItClassSession.generation;
+    final token = ItClassSession.current?.accessToken;
+    final authEndpoint = path.startsWith('/member/auth/');
     final headers = _headers();
-    if (path == '/member/auth/account-login') headers.remove('Authorization');
+    if (authEndpoint && path != '/member/auth/logout') {
+      headers.remove('Authorization');
+    }
     final encodedBody = body == null ? null : jsonEncode(body);
     _logRequest(method, uri, headers, body);
     late final http.Response response;
@@ -1147,19 +1248,17 @@ class ItClassApi {
       final stopwatch = Stopwatch()..start();
       switch (method) {
         case 'GET':
-          response = await _client.get(uri, headers: headers);
+          response = await _client
+              .get(uri, headers: headers)
+              .timeout(const Duration(seconds: 20));
         case 'PUT':
-          response = await _client.put(
-            uri,
-            headers: headers,
-            body: encodedBody ?? '{}',
-          );
+          response = await _client
+              .put(uri, headers: headers, body: encodedBody ?? '{}')
+              .timeout(const Duration(seconds: 20));
         default:
-          response = await _client.post(
-            uri,
-            headers: headers,
-            body: encodedBody ?? '{}',
-          );
+          response = await _client
+              .post(uri, headers: headers, body: encodedBody ?? '{}')
+              .timeout(const Duration(seconds: 20));
       }
       stopwatch.stop();
       _logResponse(response, elapsed: stopwatch.elapsed);
@@ -1167,13 +1266,35 @@ class ItClassApi {
       _logError(method, uri, error, stackTrace);
       rethrow;
     }
-    return _decodeResponse<T>(response);
+    try {
+      return _decodeResponse<T>(response);
+    } on ApiException catch (error) {
+      if (error.code != 401 || authEndpoint || token == null) rethrow;
+      if (!retryAuthentication) {
+        if (generation == ItClassSession.generation) {
+          await ItClassSession.clear();
+        }
+        rethrow;
+      }
+      await _refreshSession(token, generation);
+      if (generation != ItClassSession.generation) rethrow;
+      return _send<T>(
+        method,
+        path,
+        query: query,
+        body: body,
+        retryAuthentication: false,
+      );
+    }
   }
 
   T _decodeResponse<T>(http.Response response) {
     final body = utf8.decode(response.bodyBytes);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ApiException('HTTP ${response.statusCode}: $body');
+      throw ApiException(
+        'HTTP ${response.statusCode}: $body',
+        code: response.statusCode,
+      );
     }
     if (body.isEmpty) return null as T;
     final decoded = jsonDecode(body);
@@ -1215,7 +1336,7 @@ class ItClassApi {
     Object? body,
   ) {
     debugPrint(
-      '[itClass API] --> $method $uri\n'
+      '[itClass API] --> $method ${_safeLogUri(uri)}\n'
       'headers=${_compactJson(_sanitize(headers))}\n'
       'body=${_compactJson(_sanitize(body))}',
       wrapWidth: 1200,
@@ -1232,7 +1353,7 @@ class ItClassApi {
     }
     debugPrint(
       '[itClass API] <-- ${response.statusCode} ${response.request?.method ?? ''} '
-      '${response.request?.url ?? response.reasonPhrase ?? ''} '
+      '${response.request == null ? response.reasonPhrase ?? '' : _safeLogUri(response.request!.url)} '
       '(${elapsed.inMilliseconds}ms)\n'
       'headers=${_compactJson(_sanitize(response.headers))}\n'
       'body=${_compactJson(sanitizedBody)}',
@@ -1242,13 +1363,21 @@ class ItClassApi {
 
   void _logError(String method, Uri uri, Object error, StackTrace stackTrace) {
     debugPrint(
-      '[itClass API] xx> $method $uri\n'
-      'error=$error\n'
+      '[itClass API] xx> $method ${_safeLogUri(uri)}\n'
+      'error=${uri.queryParameters.containsKey('refreshToken') ? error.runtimeType : error}\n'
       'stack=$stackTrace',
       wrapWidth: 1200,
     );
   }
 }
+
+Uri _safeLogUri(Uri uri) => uri.hasQuery
+    ? uri.replace(
+        queryParameters: Map<String, String>.from(
+          _sanitize(uri.queryParameters) as Map,
+        ),
+      )
+    : uri;
 
 Object? _sanitize(Object? value) {
   const sensitiveKeys = {

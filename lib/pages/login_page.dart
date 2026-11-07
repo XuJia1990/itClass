@@ -283,7 +283,6 @@ class StudentLoginPage extends StatelessWidget {
       color: _AppPalette.teal,
       defaultAccountNo: '',
       expectedAccountType: schoolAccountTypeStudent,
-      destination: const StudentHomePage(),
     );
   }
 }
@@ -300,7 +299,6 @@ class TeacherLoginPage extends StatelessWidget {
       color: _AppPalette.sky,
       defaultAccountNo: '',
       expectedAccountType: schoolAccountTypeTeacher,
-      destination: const TeacherHomePage(),
     );
   }
 }
@@ -313,7 +311,6 @@ class _RoleAuthPage extends StatefulWidget {
     required this.color,
     required this.defaultAccountNo,
     required this.expectedAccountType,
-    required this.destination,
   });
 
   final String title;
@@ -322,7 +319,6 @@ class _RoleAuthPage extends StatefulWidget {
   final Color color;
   final String defaultAccountNo;
   final int expectedAccountType;
-  final Widget destination;
 
   @override
   State<_RoleAuthPage> createState() => _RoleAuthPageState();
@@ -449,18 +445,13 @@ class _RoleAuthPageState extends State<_RoleAuthPage> {
     }
     setState(() => _loggingIn = true);
     try {
-      final session = await ItClassApi.instance.accountLogin(
+      await ItClassApi.instance.accountLogin(
         account: account,
         password: password,
+        expectedAccountType: widget.expectedAccountType,
       );
-      if (session.schoolAccountType != widget.expectedAccountType) {
-        await ItClassApi.instance.logout();
-        throw const ApiException('この入口で利用できるアカウント種別ではありません。');
-      }
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(builder: (_) => widget.destination),
-      );
+      Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)

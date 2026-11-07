@@ -1053,6 +1053,14 @@ void main() {
 
         await _selectStudentSection(tester, 'AI教室');
         expect(find.text('公開Python動画'), findsWidgets);
+        expect(
+          tester
+              .widget<DropdownButtonFormField<String>>(
+                find.byType(DropdownButtonFormField<String>),
+              )
+              .initialValue,
+          'Python',
+        );
         expect(find.text('教室なしで学ぶPython'), findsWidgets);
         expect(find.text('動画がありません'), findsNothing);
         expect(find.text('先生に相談'), findsOneWidget);
@@ -1090,6 +1098,12 @@ void main() {
         );
         await _tapAndSettle(tester, selector);
         await _tapAndSettle(tester, find.text('文書学習').last);
+
+        await _tapAndSettle(
+          tester,
+          find.byType(DropdownButtonFormField<String>),
+        );
+        await _tapAndSettle(tester, find.text('TypeScript').last);
 
         expect(find.text('公開TypeScript教材'), findsWidgets);
         expect(find.textContaining('教室なしで学ぶTypeScript'), findsWidgets);

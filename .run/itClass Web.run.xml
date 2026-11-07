@@ -1,0 +1,7 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="itClass Web" type="FlutterRunConfigurationType" factoryName="Flutter">
+    <option name="filePath" value="$PROJECT_DIR$/lib/main.dart" />
+    <option name="additionalArgs" value="--web-port=65141 --web-browser-flag=--user-data-dir=.dart_tool/itclass-chrome" />
+    <method v="2" />
+  </configuration>
+</component>

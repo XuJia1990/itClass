@@ -1,8 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:it_class/main.dart';
+import 'session_test_support.dart';
 
 void main() {
+  late SessionStorage originalStorage;
+  setUp(() {
+    originalStorage = ItClassSession.storage;
+    ItClassSession.storage = MemorySessionStorage();
+  });
+  tearDown(() async {
+    await ItClassSession.pendingWrites;
+    ItClassSession.storage = originalStorage;
+  });
   test('AI history keeps the original answer before the teacher follow-up', () {
     final messages = chatMessagesFromAiQuestionJson({
       'questionContent': 'Javaの配列とは？',
@@ -242,7 +252,12 @@ void main() {
 
   testWidgets('shows role login options', (tester) async {
     useDesktopViewport(tester);
+    final previousStorage = ItClassSession.storage;
+    ItClassSession.storage = MemorySessionStorage();
+    addTearDown(() => ItClassSession.storage = previousStorage);
+    ItClassSession.current = null;
     await tester.pumpWidget(const ItClassApp());
+    await tester.pumpAndSettle();
 
     expect(find.text('IT教師'), findsOneWidget);
     expect(find.text('学生ログイン'), findsOneWidget);

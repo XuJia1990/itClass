@@ -13,10 +13,15 @@ Flutter で構築したクロスプラットフォーム学習アプリです。
 
 ```bash
 flutter pub get
-flutter run -d chrome
+flutter run -d chrome --web-port=65141
 flutter run -d android
 flutter run -d ios
 ```
+
+Web は同じブラウザーと同じ URL で開くとログイン状態を復元します。Android Studio の
+`itClass Web` 実行設定は固定ポートを使用します。アカウントのパスワードは保存せず、
+保存したログイントークンを必要に応じて更新します。ログアウトすると保存情報を削除します。
+サーバーがログインを失効させた場合やブラウザーのデータを消去した場合は再ログインが必要です。
 
 ## ビルドコマンド
 

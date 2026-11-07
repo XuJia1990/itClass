@@ -452,8 +452,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   Future<void> _logout() async {
     await ItClassApi.instance.logout();
     if (!mounted) return;
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => const LoginPage()),
-    );
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 }

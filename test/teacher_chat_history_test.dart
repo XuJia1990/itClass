@@ -65,6 +65,7 @@ void main() {
       requests.add(request);
       switch (request.url.path) {
         case '/app-api/school/classroom/my-list':
+        case '/app-api/school/classroom/available-list':
         case '/app-api/school/account/student/list-simple':
           return envelope([]);
         case '/app-api/school/exam-teacher/attempt/page':

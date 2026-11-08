@@ -989,7 +989,14 @@ enum _TeacherAssessmentKind {
         'options',
         'testCases',
       ],
-      paper => ['description', 'durationMinutes', 'status', 'questions'],
+      paper => [
+        'classroomId',
+        'programmingLanguage',
+        'description',
+        'durationMinutes',
+        'status',
+        'questions',
+      ],
       exam => [
         'paperId',
         'description',
@@ -1024,6 +1031,7 @@ extension _TeacherAssessmentApi on ItClassApi {
     _TeacherAssessmentKind kind,
     int page,
     String title,
+    bool mine,
   ) async {
     final data = await _get<Map<String, dynamic>>(
       '/school/exam-teacher/${kind.path}/page',
@@ -1031,6 +1039,7 @@ extension _TeacherAssessmentApi on ItClassApi {
         'pageNo': '$page',
         'pageSize': '20',
         if (title.isNotEmpty) 'title': title,
+        if (mine && kind != _TeacherAssessmentKind.question) 'mine': 'true',
       },
     );
     return _page(data, (item) => item);
@@ -1078,6 +1087,7 @@ class _TeacherAssessmentManagementState
   int _total = 0;
   int _request = 0;
   bool _loading = false;
+  bool _mine = true;
   String? _error;
 
   @override
@@ -1104,6 +1114,7 @@ class _TeacherAssessmentManagementState
         _kind,
         _page,
         _search.text.trim(),
+        _mine,
       );
       if (!mounted || request != _request) return;
       setState(() {
@@ -1132,8 +1143,19 @@ class _TeacherAssessmentManagementState
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      Text('共有の問題・試験用紙・試験', style: Theme.of(context).textTheme.titleLarge),
-      const Text('他の講師が作成した内容も編集できます。変更は今後の受験に反映されます。'),
+      Text('問題・試験用紙・試験', style: Theme.of(context).textTheme.titleLarge),
+      if (_kind != _TeacherAssessmentKind.question)
+        SegmentedButton<bool>(
+          segments: const [
+            ButtonSegment(value: true, label: Text('自分が作成')),
+            ButtonSegment(value: false, label: Text('すべて')),
+          ],
+          selected: {_mine},
+          onSelectionChanged: (values) {
+            setState(() => _mine = values.first);
+            unawaited(_load(page: 1));
+          },
+        ),
       Wrap(
         spacing: 8,
         runSpacing: 8,
@@ -1182,12 +1204,34 @@ class _TeacherAssessmentManagementState
                 '${_kind.statusLabel(_asInt(item['status']))}\n'
                 '${_asList(item['teachers']).map((teacher) => _responsibleTeacherLabel(ResourceTeacher.fromJson(_asMap(teacher)))).join('、')}',
               ),
-              trailing: IconButton(
-                tooltip: '最新の内容を取得して編集',
-                icon: const Icon(Icons.edit_outlined),
-                onPressed: _asInt(item['id']) == null
-                    ? null
-                    : () => _edit(_asInt(item['id'])!),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_kind == _TeacherAssessmentKind.exam &&
+                      _asInt(item['status']) == 10)
+                    IconButton(
+                      tooltip: '試しに受験',
+                      icon: const Icon(Icons.play_arrow_outlined),
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => _TeacherExamTrialPage(
+                            examId: _asInt(item['id'])!,
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (_kind == _TeacherAssessmentKind.question ||
+                      item['editable'] == true)
+                    IconButton(
+                      tooltip: '最新の内容を取得して編集',
+                      icon: const Icon(Icons.edit_outlined),
+                      onPressed: _asInt(item['id']) == null
+                          ? null
+                          : () => _edit(_asInt(item['id'])!),
+                    )
+                  else
+                    const Icon(Icons.lock_outline),
+                ],
               ),
             ),
           ),
@@ -1282,6 +1326,10 @@ class _TeacherAssessmentEditorState extends State<_TeacherAssessmentEditor> {
       );
       if (_asInt(data['id']) != widget.id || _asInt(data['version']) == null) {
         throw const ApiException('編集情報が不完全です。再取得してください。');
+      }
+      if (widget.kind != _TeacherAssessmentKind.question &&
+          data['editable'] != true) {
+        throw const ApiException('編集できるのは作成した講師のみです。');
       }
       if (!mounted) return;
       setState(() {

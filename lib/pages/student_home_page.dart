@@ -20,6 +20,10 @@ class _StudentHomePageState extends State<StudentHomePage> {
   List<Lesson> _apiLessons = const [];
   List<SchoolPracticeQuestion> _apiPracticeQuestions = const [];
   List<SchoolExamSummary> _apiExams = const [];
+  List<SchoolClassroom> _availableClassrooms = const [];
+  String? _examLanguage;
+  String? _teacherLanguage;
+  bool _showExamHistory = false;
   List<ExamQuestion> _apiExamQuestions = const [];
   List<StudentProfile> _chatContacts = const [];
   List<CodeAssignment> _apiCodeAssignments = const [];
@@ -88,6 +92,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
       ..._apiVideos.map((video) => video.category),
       ..._apiLessons.map((lesson) => lesson.level),
       ..._apiPracticeQuestions.map((question) => question.programmingLanguage),
+      ..._apiExams.map((exam) => exam.programmingLanguage),
     ]) {
       final name = language.trim();
       if (name.isNotEmpty) labels.putIfAbsent(name.toUpperCase(), () => name);
@@ -96,6 +101,16 @@ class _StudentHomePageState extends State<StudentHomePage> {
       (left, right) => left.toUpperCase().compareTo(right.toUpperCase()),
     );
   }
+
+  List<String> get _allLearningLanguages => _uniqueLanguages([
+    ..._resourceLanguages,
+    ..._availableClassrooms.map((room) => room.programmingLanguage),
+  ]);
+
+  bool _examMatches(SchoolExamSummary exam) =>
+      _examLanguage == null ||
+      exam.programmingLanguage.trim().toUpperCase() ==
+          _examLanguage!.toUpperCase();
 
   String _videoKey(LearningVideo video) =>
       '${video.id ?? video.videoUrl}:${video.contentVersion}';
@@ -183,8 +198,13 @@ class _StudentHomePageState extends State<StudentHomePage> {
     }
     for (final exam in _apiExams) {
       if (exam.isAvailable) {
-        // Exam summaries currently have no language field. Do not guess it.
-        addResource('EXAM', exam.id, exam.title, '', exam.teachers);
+        addResource(
+          'EXAM',
+          exam.id,
+          exam.title,
+          exam.programmingLanguage,
+          exam.teachers,
+        );
       }
     }
     final seenConversations = <int>{};
@@ -309,14 +329,14 @@ class _StudentHomePageState extends State<StudentHomePage> {
       const SizedBox(height: 8),
       DropdownButtonFormField<String>(
         key: ValueKey('language-$_selectedLanguage'),
-        initialValue: _resourceLanguages.contains(_selectedLanguage)
+        initialValue: _allLearningLanguages.contains(_selectedLanguage)
             ? _selectedLanguage
             : '',
         isExpanded: true,
         decoration: const InputDecoration(prefixIcon: Icon(Icons.code_rounded)),
         items: [
           const DropdownMenuItem(value: '', child: Text('すべての言語')),
-          for (final language in _resourceLanguages)
+          for (final language in _allLearningLanguages)
             DropdownMenuItem(value: language, child: Text(language)),
         ],
         onChanged: (value) =>
@@ -452,36 +472,41 @@ class _StudentHomePageState extends State<StudentHomePage> {
           ],
         );
       case StudentSection.exam:
-        if (_apiExams.isNotEmpty) {
-          return _HistoryPanel(
-            title: '受験すべきテスト',
-            actionLabel: _examProgressLabel,
-            children: [
-              for (var i = 0; i < _apiExams.length; i++)
-                _CompactListCard(
-                  selected: _selectedExamLesson == i,
-                  title: _apiExams[i].title,
-                  subtitle: _apiExams[i].latestScore == null
-                      ? (_apiExams[i].isAvailable ? '受験可能' : '受付終了')
-                      : '最新 ${_apiExams[i].latestScore}点',
-                  detail:
-                      '${_examLimitsLabel(_apiExams[i])}\n${_apiExams[i].description}',
-                  onTap: () {
-                    setState(() => _selectedExamLesson = i);
-                  },
-                ),
-            ],
-          );
-        }
         return _HistoryPanel(
-          title: '受験すべきテスト',
+          title: 'テスト',
           actionLabel: _examProgressLabel,
           children: [
-            const _InlineNotice(
-              tone: _NoticeTone.warning,
-              title: 'テストデータがありません',
-              message: '公開中のテストはまだありません。公開されるとここに表示されます。',
+            _LearningLanguageFilter(
+              languages: _allLearningLanguages,
+              value: _examLanguage,
+              onChanged: _changeExamLanguage,
             ),
+            const SizedBox(height: 12),
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(value: false, label: Text('受験する')),
+                ButtonSegment(value: true, label: Text('成績履歴')),
+              ],
+              selected: {_showExamHistory},
+              onSelectionChanged: (values) =>
+                  setState(() => _showExamHistory = values.first),
+            ),
+            const SizedBox(height: 12),
+            if (!_showExamHistory)
+              for (var i = 0; i < _apiExams.length; i++)
+                if (_examMatches(_apiExams[i]))
+                  _CompactListCard(
+                    selected: _selectedExamLesson == i,
+                    title: _apiExams[i].title,
+                    subtitle:
+                        '${_apiExams[i].programmingLanguage} · ${_apiExams[i].ownerTeacherName}',
+                    detail: _apiExams[i].latestScore == null
+                        ? _examLimitsLabel(_apiExams[i])
+                        : '最新 ${_apiExams[i].latestScore}点',
+                    onTap: () => setState(() => _selectedExamLesson = i),
+                  ),
+            if (!_showExamHistory && !_apiExams.any(_examMatches))
+              const Text('この言語のテストはありません。'),
           ],
         );
       case StudentSection.askTeacher:
@@ -639,7 +664,17 @@ class _StudentHomePageState extends State<StudentHomePage> {
           ],
         );
       case StudentSection.exam:
+        if (_showExamHistory) {
+          return _StudentExamHistoryWorkspace(
+            key: ValueKey(_examLanguage),
+            language: _examLanguage,
+          );
+        }
         final usingApi = _apiExams.isNotEmpty;
+        if (!_apiExams.any(_examMatches) &&
+            (_examAttemptId == null || _examSubmitted)) {
+          return const Center(child: Text('この言語のテストはありません。'));
+        }
         if (!usingApi) {
           return const Center(
             child: _InlineNotice(
@@ -678,7 +713,17 @@ class _StudentHomePageState extends State<StudentHomePage> {
   }
 
   Widget _teacherDirectoryPanel() {
-    final directory = _teacherDirectory;
+    final directory = _teacherDirectory
+        .where(
+          (entry) =>
+              _teacherLanguage == null ||
+              entry.resources.values.any(
+                (resource) =>
+                    resource.language.trim().toUpperCase() ==
+                    _teacherLanguage!.toUpperCase(),
+              ),
+        )
+        .toList();
     return ListView(
       key: const ValueKey('student-teacher-directory'),
       padding: const EdgeInsets.all(20),
@@ -687,6 +732,11 @@ class _StudentHomePageState extends State<StudentHomePage> {
           icon: Icons.people_outline,
           title: '先生一覧',
           subtitle: 'すべての学習言語の担当の先生です。先生を選んで相談できます。',
+        ),
+        _LearningLanguageFilter(
+          languages: _allLearningLanguages,
+          value: _teacherLanguage,
+          onChanged: (value) => setState(() => _teacherLanguage = value),
         ),
         if (_directoryCreating) const LinearProgressIndicator(),
         if (_directoryError != null)
@@ -1288,6 +1338,11 @@ class _StudentHomePageState extends State<StudentHomePage> {
     // Public resources do not depend on classroom membership.
     await Future.wait([
       load(
+        '教室',
+        ItClassApi.instance.myClassrooms,
+        (value) => _availableClassrooms = value,
+      ),
+      load(
         'AI会話',
         () => ItClassApi.instance.aiConversations(),
         (value) => _apiTopics = value.list,
@@ -1355,6 +1410,16 @@ class _StudentHomePageState extends State<StudentHomePage> {
       _languageSelectionInitialized = true;
       _selectedLesson = 0;
       _selectedPracticeChapter = 0;
+    });
+  }
+
+  void _changeExamLanguage(String? language) {
+    setState(() {
+      _examLanguage = language;
+      if (_examAttemptId == null || _examSubmitted) {
+        final index = _apiExams.indexWhere(_examMatches);
+        if (index >= 0) _selectedExamLesson = index;
+      }
     });
   }
 
@@ -2273,6 +2338,8 @@ class _StudentExamWorkspaceState extends State<_StudentExamWorkspace> {
               const SizedBox(height: 12),
               Text('参考回答：${feedback.referenceAnswer}'),
               Text(feedback.analysis),
+              if (feedback.graderComment.isNotEmpty)
+                Text('先生コメント：${feedback.graderComment}'),
             ],
           ],
         ),

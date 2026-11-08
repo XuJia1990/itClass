@@ -235,7 +235,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         if (_loading && _codeReviewsFromApi.isEmpty) {
           return const Center(child: CircularProgressIndicator());
         }
-        return _TeacherCodeReviewWorkspace(requests: _teacherCodeReviews);
+        return const _TeacherGradingWorkspace();
       case TeacherSection.studentMessages:
         if (_loading && _teacherStudents.isEmpty) {
           return const Center(child: CircularProgressIndicator());
@@ -392,7 +392,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     await Future.wait([
       load(
         '教室',
-        ItClassApi.instance.myClassrooms,
+        ItClassApi.instance.availableClassrooms,
         (value) => _classrooms = value,
       ),
       load('AI質問', () => ItClassApi.instance.teacherAiQuestions(), (value) {

@@ -208,6 +208,7 @@ class ExamAnswerResult {
     required this.analysis,
     required this.score,
     required this.correct,
+    this.graderComment = '',
   });
 
   final int paperQuestionId;
@@ -216,6 +217,7 @@ class ExamAnswerResult {
   final String analysis;
   final double score;
   final bool? correct;
+  final String graderComment;
 }
 
 class MemberProfile {

@@ -269,6 +269,9 @@ class SchoolExamSummary {
     this.durationMinutes = 0,
     this.maxAttempts = 0,
     this.teachers = const [],
+    this.programmingLanguage = '',
+    this.classroomId,
+    this.ownerTeacherName = '',
   });
 
   factory SchoolExamSummary.fromJson(Map<String, dynamic> json) {
@@ -284,6 +287,9 @@ class SchoolExamSummary {
       alwaysAvailable: json['alwaysAvailable'] != false,
       durationMinutes: _asInt(json['durationMinutes']) ?? 0,
       maxAttempts: _asInt(json['maxAttempts']) ?? 0,
+      programmingLanguage: _asString(json['programmingLanguage']),
+      classroomId: _asInt(json['classroomId']),
+      ownerTeacherName: _asString(json['ownerTeacherRealName']),
       teachers: _asList(
         json['teachers'],
       ).map((e) => ResourceTeacher.fromJson(_asMap(e))).toList(),
@@ -302,6 +308,9 @@ class SchoolExamSummary {
   final int durationMinutes;
   final int maxAttempts;
   final List<ResourceTeacher> teachers;
+  final String programmingLanguage;
+  final int? classroomId;
+  final String ownerTeacherName;
 
   bool get isAvailable {
     return status == 10;
@@ -559,6 +568,11 @@ class ItClassApi {
     return data.map((item) => SchoolClassroom.fromJson(_asMap(item))).toList();
   }
 
+  Future<List<SchoolClassroom>> availableClassrooms() async {
+    final data = await _get<List<dynamic>>('/school/classroom/available-list');
+    return data.map((item) => SchoolClassroom.fromJson(_asMap(item))).toList();
+  }
+
   Future<ApiPage<LearningVideo>> courseVideos({
     int? classroomId,
     String? programmingLanguage,
@@ -771,7 +785,7 @@ class ItClassApi {
         }
         await _refreshSession(token, generation);
         if (generation != ItClassSession.generation) rethrow;
-        return uploadFile(
+        return await uploadFile(
           file,
           directory: directory,
           retryAuthentication: false,
@@ -788,11 +802,19 @@ class ItClassApi {
     return page.list.isEmpty ? null : page.list.first;
   }
 
-  Future<ApiPage<SchoolExamSummary>> examPage() async {
+  Future<ApiPage<SchoolExamSummary>> examPage({
+    String? programmingLanguage,
+    int? classroomId,
+  }) async {
     return _allPages(
       '/school/exam/page',
       SchoolExamSummary.fromJson,
-      query: {'pageNo': '1', 'pageSize': '100'},
+      query: {
+        'pageNo': '1',
+        'pageSize': '100',
+        'programmingLanguage': ?programmingLanguage,
+        if (classroomId != null) 'classroomId': '$classroomId',
+      },
     );
   }
 
@@ -859,6 +881,62 @@ class ItClassApi {
     );
     return _page(data, _codeReviewItemFromAttemptJson);
   }
+
+  Future<ApiPage<Map<String, dynamic>>> teacherAttemptPage({
+    int pageNo = 1,
+    int? status,
+    String? programmingLanguage,
+  }) async {
+    final data = await _get<Map<String, dynamic>>(
+      '/school/exam-teacher/attempt/page',
+      query: {
+        'pageNo': '$pageNo',
+        'pageSize': '20',
+        if (status != null) 'status': '$status',
+        'programmingLanguage': ?programmingLanguage,
+      },
+    );
+    return _page(data, (item) => item);
+  }
+
+  Future<List<Map<String, dynamic>>> teacherAttemptAnswers(
+    int attemptId,
+  ) async {
+    final data = await _get<List<dynamic>>(
+      '/school/exam-teacher/attempt/answers',
+      query: {'attemptId': '$attemptId'},
+    );
+    return data.map(_asMap).toList();
+  }
+
+  Future<void> gradeAttempt(
+    int attemptId,
+    List<Map<String, dynamic>> answers,
+  ) => _put<void>(
+    '/school/exam-teacher/attempt/grade',
+    body: {'attemptId': attemptId, 'answers': answers},
+  );
+
+  Future<ApiPage<Map<String, dynamic>>> studentAttemptPage({
+    int pageNo = 1,
+    String? programmingLanguage,
+  }) async {
+    final data = await _get<Map<String, dynamic>>(
+      '/school/exam/attempt/page',
+      query: {
+        'pageNo': '$pageNo',
+        'pageSize': '20',
+        'programmingLanguage': ?programmingLanguage,
+      },
+    );
+    return _page(data, (item) => item);
+  }
+
+  Future<Map<String, dynamic>> examResultDetails(int attemptId) =>
+      _get<Map<String, dynamic>>(
+        '/school/exam/result',
+        query: {'attemptId': '$attemptId'},
+      );
 
   Future<List<CodeAssignment>> codeAssignments({
     String? programmingLanguage,
@@ -1151,12 +1229,16 @@ class ItClassApi {
     required String title,
     required String description,
     required List<int> questionIds,
+    String? programmingLanguage,
+    int? classroomId,
     List<int>? teacherAccountIds,
     int durationMinutes = 0,
   }) async {
     final data = await _post<dynamic>(
       '/school/exam-teacher/paper/save',
       body: {
+        'programmingLanguage': ?programmingLanguage,
+        'classroomId': ?classroomId,
         'teacherAccountIds': ?teacherAccountIds,
         'title': title,
         'description': description,
@@ -1593,6 +1675,7 @@ ExamResult _examResultFromJson(Map<String, dynamic> json) {
         analysis: _asString(answer['analysis']),
         score: _asDouble(answer['score']) ?? 0,
         correct: answer['correct'] is bool ? answer['correct'] as bool : null,
+        graderComment: _asString(answer['graderComment']),
       );
     }).toList(),
   );

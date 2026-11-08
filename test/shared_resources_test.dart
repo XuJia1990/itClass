@@ -646,6 +646,7 @@ void main() {
       final fixture = _ApiFixture((request) {
         switch (request.url.path) {
           case '/app-api/school/classroom/my-list':
+          case '/app-api/school/classroom/available-list':
           case '/app-api/school/account/student/list-simple':
             expect(request.method, 'GET');
             return _envelope([]);
@@ -1270,6 +1271,7 @@ class _StudentApiFixture {
     expect(request.url.queryParameters, isNot(contains('classroomId')));
     switch (request.url.path) {
       case '/app-api/school/classroom/my-list':
+      case '/app-api/school/classroom/available-list':
       case '/app-api/school/practice-question/list':
       case '/app-api/school/code-scoring/assignment/list':
         expect(request.method, 'GET');

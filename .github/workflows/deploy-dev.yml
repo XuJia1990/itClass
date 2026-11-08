@@ -16,6 +16,11 @@ on:
       - 'pubspec.lock'
       - 'analysis_options.yaml'
   workflow_dispatch:
+    inputs:
+      publish_dev:
+        description: 'Publish dev only after the 20261108 accounts/assessments backend is deployed'
+        type: boolean
+        default: false
 
 concurrency:
   group: itclass-web-dev
@@ -80,11 +85,19 @@ jobs:
       - name: Build image
         run: |
           docker build \
-            --tag "${IMAGE_NAME}:dev" \
             --tag "${IMAGE_NAME}:${GITHUB_SHA}" \
             .
 
       - name: Push image
         run: |
-          docker push "${IMAGE_NAME}:dev"
           docker push "${IMAGE_NAME}:${GITHUB_SHA}"
+
+      - name: Promote dev after backend migration
+        if: ${{ vars.TWSCHOOL_ASSESSMENTS_20261108_READY == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish_dev) }}
+        run: |
+          docker tag "${IMAGE_NAME}:${GITHUB_SHA}" "${IMAGE_NAME}:dev"
+          docker push "${IMAGE_NAME}:dev"
+
+      - name: Migration notice
+        if: ${{ vars.TWSCHOOL_ASSESSMENTS_20261108_READY != 'true' && !(github.event_name == 'workflow_dispatch' && inputs.publish_dev) }}
+        run: echo '::notice::Commit image built. Deploy the 20261108 backend before promoting dev with publish_dev or TWSCHOOL_ASSESSMENTS_20261108_READY=true.'

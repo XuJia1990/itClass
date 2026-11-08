@@ -22,6 +22,7 @@ part 'shared/api.dart';
 part 'shared/session.dart';
 part 'shared/user_messages.dart';
 part 'shared/teacher_resources.dart';
+part 'shared/exam_grading.dart';
 part 'shared/mock_data.dart';
 
 void main() {

@@ -2500,45 +2500,6 @@ class _TeacherRequestWorkspace extends StatelessWidget {
   }
 }
 
-class _TeacherCodeReviewWorkspace extends StatelessWidget {
-  const _TeacherCodeReviewWorkspace({required this.requests});
-
-  final List<CodeReviewItem> requests;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(24),
-      children: [
-        const _SectionHeader(
-          icon: Icons.verified_rounded,
-          title: '成績確認',
-          subtitle: '学生の提出内容、AIスコア、先生コメントを確認します。',
-        ),
-        const SizedBox(height: 16),
-        for (final item in requests)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${item.student} · ${item.title}',
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 8),
-                  Text('得点：${item.score}点'),
-                  Text('コメント：${item.feedback}'),
-                ],
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
 class _TeacherChatWorkspace extends StatefulWidget {
   const _TeacherChatWorkspace({required this.student, required this.onRead});
 
@@ -3136,6 +3097,7 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
         title: title,
         description: _testCategoryController.text.trim(),
         questionIds: _savedQuestionIds,
+        programmingLanguage: language,
         teacherAccountIds: _teacherIds.toList(),
         durationMinutes: duration,
       );

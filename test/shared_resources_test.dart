@@ -899,6 +899,13 @@ void main() {
         expect(fixture.readConversationIds, [512]);
         expect(find.text('先生に質問：B先生'), findsOneWidget);
         expect(find.text('返信: 会話512'), findsOneWidget);
+        expect(find.text('山田先生（表示名）'), findsOneWidget);
+        expect(find.text('先生'), findsNothing);
+        expect(
+          tester.getTopLeft(find.text('山田先生（表示名）')).dx,
+          lessThan(tester.getTopLeft(find.text('返信: 会話512')).dx),
+          reason: 'The teacher name belongs outside the incoming bubble.',
+        );
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox.shrink());
       });
@@ -1379,6 +1386,8 @@ class _StudentApiFixture {
               'conversationId': id,
               'senderAccountId': conversations[id]!['peerAccountId'],
               'senderAccountType': schoolAccountTypeTeacher,
+              'senderRealName': '山田',
+              'senderNickname': '山田先生（表示名）',
               'content': '返信: 会話$id',
             },
           ]),

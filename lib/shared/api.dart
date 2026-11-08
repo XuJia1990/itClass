@@ -1695,6 +1695,8 @@ ChatMessage _chatMessageFromJson(Map<String, dynamic> json) {
     _asString(json['content'] ?? json['fileName']),
     id: _asInt(json['id']),
     conversationId: _asInt(json['conversationId']),
+    senderAccountId: senderId,
+    senderName: _chatSenderName(json['senderNickname'], json['senderRealName']),
   );
 }
 
@@ -1761,14 +1763,34 @@ Topic _topicFromAiConversationJson(Map<String, dynamic> json) {
   );
 }
 
-List<String> _teacherRepliesFromJson(Map<String, dynamic> json) {
+String _chatSenderName(dynamic nickname, dynamic realName) {
+  final preferred = _asString(nickname).trim();
+  return preferred.isNotEmpty ? preferred : _asString(realName).trim();
+}
+
+List<ChatMessage> _teacherRepliesFromJson(Map<String, dynamic> json) {
   final replies = _asList(json['teacherReplies'])
-      .map((reply) => _asString(_asMap(reply)['answer']))
-      .where((answer) => answer.trim().isNotEmpty)
+      .map((reply) {
+        final data = _asMap(reply);
+        return ChatMessage.teacher(
+          _asString(data['answer']),
+          senderAccountId: _asInt(data['teacherAccountId']),
+          senderName: _asString(data['teacherName']).trim(),
+        );
+      })
+      .where((reply) => reply.text.trim().isNotEmpty)
       .toList();
   if (replies.isNotEmpty) return replies;
   final legacy = _asString(json['teacherAnswer']);
-  return legacy.trim().isEmpty ? [] : [legacy];
+  return legacy.trim().isEmpty
+      ? []
+      : [
+          ChatMessage.teacher(
+            legacy,
+            senderAccountId: _asInt(json['teacherAccountId']),
+            senderName: _asString(json['teacherName']).trim(),
+          ),
+        ];
 }
 
 List<ChatMessage> chatMessagesFromAiQuestionJson(Map<String, dynamic> json) {
@@ -1785,7 +1807,7 @@ List<ChatMessage> chatMessagesFromAiQuestionJson(Map<String, dynamic> json) {
   return [
     if (question.isNotEmpty) ChatMessage.student(question),
     if (aiAnswer.isNotEmpty) ChatMessage.ai(aiAnswer),
-    for (final answer in teacherReplies) ChatMessage.teacher(answer),
+    ...teacherReplies,
     if (aiAnswer.isEmpty && teacherReplies.isEmpty && legacyAnswer.isNotEmpty)
       ChatMessage.ai(legacyAnswer),
   ];

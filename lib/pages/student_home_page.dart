@@ -873,6 +873,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
       title: '先生に質問：${contact.name}',
       emptyHint: '先生に学習について質問できます。',
       messages: _teacherMessages,
+      peerName: contact.name,
       controller: _teacherInput,
       sendLabel: _teacherSending ? '送信中…' : '先生へ送信',
       onSend: _sendTeacherMessage,

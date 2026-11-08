@@ -9,7 +9,14 @@ class MenuItem {
 }
 
 class ChatMessage {
-  const ChatMessage(this.author, this.text, {this.id, this.conversationId});
+  const ChatMessage(
+    this.author,
+    this.text, {
+    this.id,
+    this.conversationId,
+    this.senderAccountId,
+    this.senderName = '',
+  });
 
   factory ChatMessage.student(String text) {
     return ChatMessage(MessageAuthor.student, text);
@@ -19,14 +26,25 @@ class ChatMessage {
     return ChatMessage(MessageAuthor.ai, text);
   }
 
-  factory ChatMessage.teacher(String text) {
-    return ChatMessage(MessageAuthor.teacher, text);
+  factory ChatMessage.teacher(
+    String text, {
+    int? senderAccountId,
+    String senderName = '',
+  }) {
+    return ChatMessage(
+      MessageAuthor.teacher,
+      text,
+      senderAccountId: senderAccountId,
+      senderName: senderName,
+    );
   }
 
   final MessageAuthor author;
   final String text;
   final int? id;
   final int? conversationId;
+  final int? senderAccountId;
+  final String senderName;
 }
 
 enum MessageAuthor { student, ai, teacher }
@@ -329,12 +347,12 @@ class TeacherRequest {
   final String aiAnswer;
   final bool answered;
   final String? teacherAnswer;
-  final List<String> teacherReplies;
+  final List<ChatMessage> teacherReplies;
 
   TeacherRequest copyWith({
     bool? answered,
     String? teacherAnswer,
-    List<String>? teacherReplies,
+    List<ChatMessage>? teacherReplies,
   }) {
     return TeacherRequest(
       questionId: questionId,

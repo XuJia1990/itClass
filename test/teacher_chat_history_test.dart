@@ -40,6 +40,8 @@ void main() {
     'content': '履歴メッセージ$id',
     'senderAccountId': id.isEven ? 7 : 5,
     'senderAccountType': id.isEven ? 1 : 2,
+    'senderRealName': id.isEven ? '田中' : '佐藤',
+    'senderNickname': id.isEven ? '田中先生' : '佐藤さん',
   };
 
   setUp(() {
@@ -146,12 +148,14 @@ void main() {
         'status': 30,
         'teacherAnswer': '補足',
         'teacherReplies': [
-          {'id': 1, 'answer': '説明'},
-          {'id': 2, 'answer': '補足'},
-          {'id': 3, 'answer': '補足'},
+          {'id': 1, 'answer': '説明', 'teacherAccountId': 7, 'teacherName': '田中'},
+          {'id': 2, 'answer': '補足', 'teacherAccountId': 8, 'teacherName': '鈴木'},
+          {'id': 3, 'answer': '補足', 'teacherAccountId': 7, 'teacherName': '田中'},
         ],
       });
       expect(messages.map((m) => m.text), ['質問', '説明', '補足', '補足']);
+      expect(messages.skip(1).map((m) => m.senderName), ['田中', '鈴木', '田中']);
+      expect(messages.skip(1).map((m) => m.senderAccountId), [7, 8, 7]);
       expect(
         messages.skip(1).every((m) => m.author == MessageAuthor.teacher),
         isTrue,
@@ -213,6 +217,18 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('履歴メッセージ101'), findsOneWidget);
       expect(find.text('履歴メッセージ102'), findsOneWidget);
+      expect(find.text('佐藤さん'), findsOneWidget);
+      expect(find.text('田中先生'), findsNothing);
+      expect(
+        tester.getTopLeft(find.text('佐藤さん')).dx,
+        lessThan(tester.getTopLeft(find.text('履歴メッセージ101')).dx),
+      );
+      expect(
+        tester.getTopLeft(find.text('履歴メッセージ102')).dx,
+        greaterThan(tester.getTopLeft(find.text('履歴メッセージ101')).dx),
+        reason:
+            'The signed-in teacher replies on the right; the student is on the left.',
+      );
       await tester.tap(find.text('以前のメッセージを表示'));
       await tester.pumpAndSettle();
       expect(find.text('履歴メッセージ100'), findsOneWidget);

@@ -565,6 +565,7 @@ class _ChatWorkspace extends StatelessWidget {
     required this.controller,
     required this.sendLabel,
     required this.onSend,
+    this.peerName = '',
   });
 
   final String title;
@@ -573,6 +574,7 @@ class _ChatWorkspace extends StatelessWidget {
   final TextEditingController controller;
   final String sendLabel;
   final VoidCallback onSend;
+  final String peerName;
 
   @override
   Widget build(BuildContext context) {
@@ -597,7 +599,7 @@ class _ChatWorkspace extends StatelessWidget {
                 )
               else
                 for (final message in messages)
-                  _MessageBubble(message: message),
+                  _MessageBubble(message: message, peerName: peerName),
             ],
           ),
         ),
@@ -636,14 +638,36 @@ class _ChatWorkspace extends StatelessWidget {
 }
 
 class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message});
+  const _MessageBubble({
+    required this.message,
+    this.viewer = MessageAuthor.student,
+    this.peerName = '',
+  });
 
   final ChatMessage message;
+  final MessageAuthor viewer;
+  final String peerName;
 
   @override
   Widget build(BuildContext context) {
     final isStudent = message.author == MessageAuthor.student;
     final isTeacher = message.author == MessageAuthor.teacher;
+    final currentAccountId = ItClassSession.current?.schoolAccountId;
+    final isOwn =
+        message.author != MessageAuthor.ai &&
+        (message.senderAccountId != null && currentAccountId != null
+            ? message.senderAccountId == currentAccountId
+            : message.author == viewer);
+    final senderName = message.senderName.trim().isNotEmpty
+        ? message.senderName.trim()
+        : peerName.trim();
+    final label = message.author == MessageAuthor.ai
+        ? 'AI'
+        : senderName.isNotEmpty
+        ? senderName
+        : isTeacher
+        ? '先生'
+        : '学生';
     final bubble = Container(
       constraints: const BoxConstraints(maxWidth: 680),
       padding: const EdgeInsets.all(14),
@@ -659,7 +683,7 @@ class _MessageBubble extends StatelessWidget {
       child: Text(message.text, style: const TextStyle(height: 1.5)),
     );
 
-    if (isStudent) {
+    if (isOwn) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: Align(alignment: Alignment.centerRight, child: bubble),
@@ -676,14 +700,17 @@ class _MessageBubble extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 13, right: 8),
-                child: Text(
-                  isTeacher ? '先生' : 'AI',
-                  style: const TextStyle(
-                    color: _AppPalette.muted,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 100),
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 13, right: 8),
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      color: _AppPalette.muted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ),
@@ -2439,7 +2466,10 @@ class _TeacherRequestWorkspace extends StatelessWidget {
                   const Text('先生の回答履歴'),
                   const SizedBox(height: 8),
                   for (final answer in request.teacherReplies)
-                    _MessageBubble(message: ChatMessage.teacher(answer)),
+                    _MessageBubble(
+                      message: answer,
+                      viewer: MessageAuthor.teacher,
+                    ),
                 ],
               ],
             ),
@@ -2599,7 +2629,12 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
             message: '最初のメッセージを送信できます。',
           )
         else
-          for (final message in _messages) _MessageBubble(message: message),
+          for (final message in _messages)
+            _MessageBubble(
+              message: message,
+              viewer: MessageAuthor.teacher,
+              peerName: widget.student.name,
+            ),
         const SizedBox(height: 16),
         TextField(
           controller: _controller,

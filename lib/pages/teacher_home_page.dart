@@ -319,7 +319,14 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           _requests[index] = _requests[index].copyWith(
             answered: true,
             teacherAnswer: text,
-            teacherReplies: [..._requests[index].teacherReplies, text],
+            teacherReplies: [
+              ..._requests[index].teacherReplies,
+              ChatMessage.teacher(
+                text,
+                senderAccountId: ItClassSession.current?.schoolAccountId,
+                senderName: ItClassSession.current?.displayName ?? '',
+              ),
+            ],
           );
         }
         if (_requests[_selectedRequest].questionId == request.questionId &&

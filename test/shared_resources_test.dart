@@ -807,147 +807,101 @@ void main() {
     (name: '390px mobile', size: const Size(390, 844)),
   ]) {
     group('student without a classroom on ${viewport.name}', () {
-      testWidgets(
-        'teacher directory merges resource teachers without history and creates only the chosen consultation',
-        (tester) async {
-          final fixture = _StudentApiFixture(
-            videos: [
-              _videoJson,
-              {..._videoJson, 'id': 102, 'title': 'Python応用動画'},
-            ],
-            documents: [
-              {
-                ..._documentJson,
-                'teachers': [
-                  // The same school account can carry an older display name
-                  // on another resource. Identity must not depend on the name.
-                  {..._teachersJson.first, 'realName': 'A先生（旧表示名）'},
-                  _teachersJson.last,
-                ],
-              },
-            ],
-            exams: const [],
-          );
-          await _mountStudent(tester, fixture, viewport.size);
-          await _selectStudentSection(tester, 'AI教室');
-          await _tapAndSettle(
-            tester,
-            find.byType(DropdownButtonFormField<String>),
-          );
-          await _tapAndSettle(tester, find.text('Python').last);
-          await _selectStudentSection(tester, '先生に質問');
-
-          for (final teacher in [
-            (id: 11, name: 'A先生'),
-            (id: 12, name: 'B先生'),
-          ]) {
-            final card = find.byKey(
-              ValueKey('teacher-directory-${teacher.id}'),
-            );
-            expect(
-              card,
-              findsOneWidget,
-              reason:
-                  'Repeated video/document assignments must produce one card per accountId.',
-            );
-            expect(
-              find.descendant(
-                of: card,
-                matching: find.textContaining(teacher.name),
-              ),
-              findsOneWidget,
-            );
-            final languages = find.descendant(
-              of: card,
-              matching: find.textContaining('担当言語：'),
-            );
-            expect(languages, findsOneWidget);
-            final label = tester.widget<Text>(languages).data!;
-            expect(label, contains('Python'));
-            expect(
-              label,
-              contains('TypeScript'),
-              reason:
-                  'The learning filter must not hide other responsible languages.',
-            );
-            expect(RegExp('Python').allMatches(label), hasLength(1));
-            expect(label, isNot(contains('Java')));
-            expect(
-              card.hitTestable(),
-              findsOneWidget,
-              reason:
-                  'The initial mobile directory must be usable without opening a drawer.',
-            );
-          }
-          expect(
-            find.byKey(const ValueKey('teacher-directory-999')),
-            findsNothing,
-          );
-          expect(fixture.conversations, isEmpty);
-          expect(fixture.consultations, isEmpty);
-          expect(fixture.readConversationIds, isEmpty);
-          expect(
-            fixture.requests.where(
-              (request) => request.url.path.endsWith('/resource/teachers'),
-            ),
-            isEmpty,
-            reason:
-                'The directory must use teachers already returned with resources.',
-          );
-
-          final teacherB = find.byKey(const ValueKey('teacher-directory-12'));
-          await tester.tap(teacherB);
-          await tester.pump();
-          await tester.pump(const Duration(milliseconds: 300));
-          expect(find.text('相談する資料を選択'), findsOneWidget);
-          expect(
-            find.byKey(const ValueKey('teacher-resource-VIDEO-101')),
-            findsOneWidget,
-          );
-          expect(
-            find.byKey(const ValueKey('teacher-resource-VIDEO-102')),
-            findsOneWidget,
-          );
-          final document = find.byKey(
-            const ValueKey('teacher-resource-DOCUMENT-201'),
-          );
-          expect(document, findsOneWidget);
-          expect(
-            find.descendant(
-              of: document,
-              matching: find.text('公開TypeScript教材'),
-            ),
-            findsOneWidget,
-          );
-          expect(
-            find.descendant(
-              of: document,
-              matching: find.textContaining('TypeScript'),
-            ),
-            findsWidgets,
-          );
-          expect(
-            fixture.consultations,
-            isEmpty,
-            reason:
-                'Choosing a teacher must wait for the explicit resource choice.',
-          );
-
-          await _tapAndSettle(tester, document);
-          expect(fixture.consultations, [
+      testWidgets('teacher directory opens a direct chat without choosing a resource', (
+        tester,
+      ) async {
+        final fixture = _StudentApiFixture(
+          videos: [
+            _videoJson,
+            {..._videoJson, 'id': 102, 'title': 'Python応用動画'},
+          ],
+          documents: [
             {
-              'peerAccountId': 12,
-              'resourceType': 'DOCUMENT',
-              'resourceId': 201,
+              ..._documentJson,
+              'teachers': [
+                // The same school account can carry an older display name
+                // on another resource. Identity must not depend on the name.
+                {..._teachersJson.first, 'realName': 'A先生（旧表示名）'},
+                _teachersJson.last,
+              ],
             },
-          ]);
-          expect(fixture.readConversationIds, [312]);
-          expect(find.text('先生に質問：B先生'), findsOneWidget);
-          expect(find.text('返信: 会話312'), findsOneWidget);
-          expect(tester.takeException(), isNull);
-          await tester.pumpWidget(const SizedBox.shrink());
-        },
-      );
+          ],
+          exams: const [],
+        );
+        await _mountStudent(tester, fixture, viewport.size);
+        await _selectStudentSection(tester, 'AI教室');
+        await _tapAndSettle(
+          tester,
+          find.byType(DropdownButtonFormField<String>),
+        );
+        await _tapAndSettle(tester, find.text('Python').last);
+        await _selectStudentSection(tester, '先生に質問');
+
+        for (final teacher in [(id: 11, name: 'A先生'), (id: 12, name: 'B先生')]) {
+          final card = find.byKey(ValueKey('teacher-directory-${teacher.id}'));
+          expect(
+            card,
+            findsOneWidget,
+            reason:
+                'Repeated video/document assignments must produce one card per accountId.',
+          );
+          expect(
+            find.descendant(
+              of: card,
+              matching: find.textContaining(teacher.name),
+            ),
+            findsOneWidget,
+          );
+          final languages = find.descendant(
+            of: card,
+            matching: find.textContaining('担当言語：'),
+          );
+          expect(languages, findsOneWidget);
+          final label = tester.widget<Text>(languages).data!;
+          expect(label, contains('Python'));
+          expect(
+            label,
+            contains('TypeScript'),
+            reason:
+                'The learning filter must not hide other responsible languages.',
+          );
+          expect(RegExp('Python').allMatches(label), hasLength(1));
+          expect(label, isNot(contains('Java')));
+          expect(
+            card.hitTestable(),
+            findsOneWidget,
+            reason:
+                'The initial mobile directory must be usable without opening a drawer.',
+          );
+        }
+        expect(
+          find.byKey(const ValueKey('teacher-directory-999')),
+          findsNothing,
+        );
+        expect(fixture.conversations, isEmpty);
+        expect(fixture.consultations, isEmpty);
+        expect(fixture.readConversationIds, isEmpty);
+        expect(
+          fixture.requests.where(
+            (request) => request.url.path.endsWith('/resource/teachers'),
+          ),
+          isEmpty,
+          reason:
+              'The directory must use teachers already returned with resources.',
+        );
+
+        final teacherB = find.byKey(const ValueKey('teacher-directory-12'));
+        await _tapAndSettle(tester, teacherB);
+        expect(find.text('相談する資料を選択'), findsNothing);
+        expect(fixture.consultations, [
+          {'peerAccountId': 12},
+        ]);
+        expect(fixture.readConversationIds, [512]);
+        expect(find.text('先生に質問：B先生'), findsOneWidget);
+        expect(find.text('返信: 会話512'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
 
       testWidgets(
         'teacher directory preserves separate existing conversations for the same teacher',
@@ -981,6 +935,11 @@ void main() {
               tester,
               find.byKey(const ValueKey('teacher-directory-11')),
             );
+            expect(find.text('返信: 会話902'), findsOneWidget);
+            await _tapAndSettle(
+              tester,
+              find.widgetWithText(TextButton, '会話履歴'),
+            );
             final video = find.byKey(
               const ValueKey('teacher-conversation-901'),
             );
@@ -1003,7 +962,7 @@ void main() {
               ),
               findsWidgets,
             );
-            expect(find.text('新しい相談'), findsOneWidget);
+            expect(find.text('チャットに戻る'), findsOneWidget);
             expect(fixture.consultations, isEmpty);
 
             await _tapAndSettle(
@@ -1027,7 +986,7 @@ void main() {
               find.widgetWithText(TextButton, '先生一覧'),
             );
           }
-          expect(fixture.readConversationIds, [902, 901, 902]);
+          expect(fixture.readConversationIds, [902, 902, 902, 901, 902, 902]);
           expect(fixture.conversations.keys, unorderedEquals([901, 902]));
           expect(
             find.byKey(const ValueKey('teacher-directory-11')),
@@ -1351,6 +1310,17 @@ class _StudentApiFixture {
         );
         final body = _body(request);
         final teacher = body['peerAccountId'] as int;
+        if (!body.containsKey('resourceType')) {
+          expect(body, {'peerAccountId': teacher});
+          consultations.add(body);
+          final id = 500 + teacher;
+          conversations[id] = {
+            'id': id,
+            'peerAccountId': teacher,
+            'peerRealName': teacher == 11 ? 'A先生' : 'B先生',
+          };
+          return _envelope(id);
+        }
         final type = body['resourceType'] as String;
         final resourceId = body['resourceId'] as int;
         final resource = _resource(type, resourceId);

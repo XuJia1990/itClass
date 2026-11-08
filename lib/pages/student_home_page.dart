@@ -724,20 +724,12 @@ class _StudentHomePageState extends State<StudentHomePage> {
               subtitle: entry.languageLabel,
               detail: entry.conversations.isNotEmpty
                   ? entry.conversations.first.lastQuestion
-                  : '${entry.resources.length}件の資料について相談できます。',
+                  : '質問を送信できます。',
               badge: entry.unreadCount > 0 ? '${entry.unreadCount}件未読' : null,
               showNotificationDot: entry.unreadCount > 0,
               onTap: () {
                 if (_dataLoading || _directoryConsultationBusy) return;
-                if (entry.conversations.isEmpty) {
-                  unawaited(_consultDirectoryTeacher(entry));
-                } else {
-                  setState(() {
-                    _showTeacherDirectory = false;
-                    _directoryTeacherKey = entry.key;
-                    _directoryError = null;
-                  });
-                }
+                unawaited(_consultDirectoryTeacher(entry));
               },
             ),
           ),
@@ -787,16 +779,26 @@ class _StudentHomePageState extends State<StudentHomePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: () => setState(() {
-              _showTeacherDirectory = true;
-              _directoryTeacherKey = null;
-            }),
-            icon: const Icon(Icons.arrow_back_rounded),
-            label: const Text('先生一覧'),
-          ),
+        Row(
+          children: [
+            TextButton.icon(
+              onPressed: () => setState(() {
+                _showTeacherDirectory = true;
+                _directoryTeacherKey = null;
+              }),
+              icon: const Icon(Icons.arrow_back_rounded),
+              label: const Text('先生一覧'),
+            ),
+            if (selectedTeacher == null &&
+                _selectedChatContact?.accountId != null)
+              TextButton.icon(
+                onPressed: () => setState(() {
+                  _directoryTeacherKey = '${_selectedChatContact!.accountId}';
+                }),
+                icon: const Icon(Icons.history_rounded),
+                label: const Text('会話履歴'),
+              ),
+          ],
         ),
         if (_directoryCreating) const LinearProgressIndicator(),
         Expanded(
@@ -817,16 +819,13 @@ class _StudentHomePageState extends State<StudentHomePage> {
         subtitle: entry.languageLabel,
       ),
       const SizedBox(height: 12),
-      if (entry.resources.isNotEmpty)
-        OutlinedButton.icon(
-          onPressed: _dataLoading || _directoryConsultationBusy
-              ? null
-              : () => unawaited(_consultDirectoryTeacher(entry)),
-          icon: const Icon(Icons.add_comment_outlined),
-          label: const Text('新しい相談'),
-        )
-      else
-        const Text('現在相談できる担当資料はありません。過去の会話を確認できます。'),
+      OutlinedButton.icon(
+        onPressed: _dataLoading || _directoryConsultationBusy
+            ? null
+            : () => unawaited(_consultDirectoryTeacher(entry)),
+        icon: const Icon(Icons.chat_bubble_outline_rounded),
+        label: const Text('チャットに戻る'),
+      ),
       if (_directoryError != null)
         Text(
           _directoryError!,
@@ -872,7 +871,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
     }
     return _ChatWorkspace(
       title: '先生に質問：${contact.name}',
-      emptyHint: '${_contactResourceLabel(contact)}について先生に相談できます。',
+      emptyHint: '先生に学習について質問できます。',
       messages: _teacherMessages,
       controller: _teacherInput,
       sendLabel: _teacherSending ? '送信中…' : '先生へ送信',
@@ -883,68 +882,36 @@ class _StudentHomePageState extends State<StudentHomePage> {
   Future<void> _consultDirectoryTeacher(
     _StudentTeacherDirectoryEntry entry,
   ) async {
-    final teacher = entry.teacher;
-    if (_directoryConsultationBusy ||
-        teacher == null ||
-        entry.resources.isEmpty) {
+    if (_directoryConsultationBusy) return;
+    // Existing histories open immediately, without another selection screen.
+    if (entry.conversations.isNotEmpty) {
+      await _selectTeacherContact(entry.conversations.first);
       return;
     }
+    final teacher = entry.teacher;
+    if (teacher == null) return;
     setState(() {
       _directoryConsultationBusy = true;
+      _directoryCreating = true;
       _directoryError = null;
     });
     try {
-      final resources = entry.resources.values.toList();
-      final resource = resources.length == 1
-          ? resources.single
-          : await showDialog<_StudentConsultationResource>(
-              context: context,
-              builder: (dialogContext) => AlertDialog(
-                title: const Text('相談する資料を選択'),
-                content: SizedBox(
-                  width: 400,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 400),
-                    child: ListView(
-                      shrinkWrap: true,
-                      children: [
-                        for (final resource in resources)
-                          ListTile(
-                            key: ValueKey(
-                              'teacher-resource-${resource.type}-${resource.id}',
-                            ),
-                            title: Text(resource.title),
-                            subtitle: Text(resource.label),
-                            onTap: () =>
-                                Navigator.of(dialogContext).pop(resource),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(),
-                    child: const Text('キャンセル'),
-                  ),
-                ],
-              ),
-            );
-      if (!mounted || resource == null) return;
-      setState(() => _directoryCreating = true);
-      // The backend revalidates the teacher's current resource responsibility.
-      final conversationId = await _getOrCreateResourceChat(
-        resource.type,
-        resource.id,
-        teacher.accountId,
+      final conversationId = await ItClassApi.instance.getOrCreateChat(
+        peerAccountId: teacher.accountId,
       );
+      if (conversationId <= 0) throw const ApiException('会話を作成できませんでした。');
       if (!mounted) return;
-      await _openResourceConversation(
-        conversationId,
-        teacher,
-        resource.type,
-        resource.id,
-        resource.title,
+      await _openTeacherContact(
+        StudentProfile(
+          entry.name,
+          entry.languageLabel,
+          '質問を送信できます。',
+          accountId: teacher.accountId,
+          accountNo: teacher.accountNo,
+          conversationId: conversationId,
+          email: '',
+          phone: '',
+        ),
       );
     } catch (error) {
       if (!mounted) return;
@@ -1537,6 +1504,12 @@ class _StudentHomePageState extends State<StudentHomePage> {
       email: '',
       phone: '',
     );
+    await _openTeacherContact(contact);
+  }
+
+  Future<void> _openTeacherContact(StudentProfile contact) async {
+    if (!mounted) return;
+    final conversationId = contact.conversationId!;
     // Empty conversations are intentionally omitted by the server's history.
     setState(() {
       _pendingChatContacts[conversationId] = contact;
@@ -1569,9 +1542,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
         final type = contact.resourceType;
         final hasResource =
             type != null && type.isNotEmpty && contact.resourceId != null;
-        if (!hasResource && contact.classroomId == null) {
-          throw const ApiException('教材の相談ボタンから会話を開いてください。');
-        }
         // Legacy contacts may still require their own original classroom.
         conversationId = await ItClassApi.instance.getOrCreateChat(
           peerAccountId: contact.accountId!,
@@ -1825,6 +1795,7 @@ bool _sameChatContact(StudentProfile? left, StudentProfile right) {
 String _contactResourceLabel(StudentProfile contact) {
   final type = contact.resourceType;
   if (type == null || type.isEmpty) {
+    if (contact.classroomId == null) return '先生とのチャット';
     return contact.status.isEmpty ? '以前の会話' : '以前の会話 · ${contact.status}';
   }
   final label = switch (type) {

@@ -317,6 +317,7 @@ class TeacherRequest {
     required this.aiAnswer,
     this.answered = false,
     this.teacherAnswer,
+    this.teacherReplies = const [],
   });
 
   final int? questionId;
@@ -328,8 +329,13 @@ class TeacherRequest {
   final String aiAnswer;
   final bool answered;
   final String? teacherAnswer;
+  final List<String> teacherReplies;
 
-  TeacherRequest copyWith({bool? answered, String? teacherAnswer}) {
+  TeacherRequest copyWith({
+    bool? answered,
+    String? teacherAnswer,
+    List<String>? teacherReplies,
+  }) {
     return TeacherRequest(
       questionId: questionId,
       conversationId: conversationId,
@@ -340,6 +346,7 @@ class TeacherRequest {
       aiAnswer: aiAnswer,
       answered: answered ?? this.answered,
       teacherAnswer: teacherAnswer ?? this.teacherAnswer,
+      teacherReplies: teacherReplies ?? this.teacherReplies,
     );
   }
 }
@@ -485,4 +492,4 @@ enum UploadMaterialType { video, pdf, test }
 
 enum ProfileSettingSection { profile, avatar, password, contact, basicInfo }
 
-enum SystemManagementSection { createStudent, addExisting, allStudents }
+enum SystemManagementSection { createStudent, allStudents }

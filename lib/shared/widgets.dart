@@ -2398,9 +2398,11 @@ class _TeacherRequestWorkspace extends StatelessWidget {
     required this.request,
     required this.controller,
     required this.onSubmit,
+    this.sending = false,
   });
 
   final TeacherRequest request;
+  final bool sending;
   final TextEditingController controller;
   final VoidCallback onSubmit;
 
@@ -2432,9 +2434,12 @@ class _TeacherRequestWorkspace extends StatelessWidget {
                   'AI の初期回答：${request.aiAnswer}',
                   style: const TextStyle(color: _AppPalette.muted),
                 ),
-                if (request.teacherAnswer != null) ...[
+                if (request.teacherReplies.isNotEmpty) ...[
                   const Divider(height: 26),
-                  Text('先生の回答：${request.teacherAnswer}'),
+                  const Text('先生の回答履歴'),
+                  const SizedBox(height: 8),
+                  for (final answer in request.teacherReplies)
+                    _MessageBubble(message: ChatMessage.teacher(answer)),
                 ],
               ],
             ),
@@ -2455,9 +2460,9 @@ class _TeacherRequestWorkspace extends StatelessWidget {
         Align(
           alignment: Alignment.centerLeft,
           child: FilledButton.icon(
-            onPressed: onSubmit,
+            onPressed: sending ? null : onSubmit,
             icon: const Icon(Icons.send_rounded),
-            label: const Text('学生へ回答'),
+            label: Text(sending ? '送信中…' : '学生へ回答'),
           ),
         ),
       ],
@@ -2521,6 +2526,9 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
   int? _conversationId;
   bool _loading = false;
   bool _sending = false;
+  bool _loadingOlder = false;
+  bool _hasOlder = false;
+  String? _historyError;
   int _loadGeneration = 0;
 
   @override
@@ -2560,9 +2568,31 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
           subtitle: '学生との直接メッセージ · ${widget.student.status}',
         ),
         const SizedBox(height: 16),
+        Row(
+          children: [
+            const Text('会話履歴', style: TextStyle(fontWeight: FontWeight.w800)),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: _loading || _loadingOlder ? null : _loadConversation,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('更新'),
+            ),
+          ],
+        ),
+        if (_historyError != null)
+          _InlineNotice(
+            tone: _NoticeTone.warning,
+            title: '会話履歴を読み込めませんでした',
+            message: _historyError!,
+          ),
+        if (_hasOlder)
+          TextButton(
+            onPressed: _loading || _loadingOlder ? null : _loadOlderMessages,
+            child: Text(_loadingOlder ? '読み込み中…' : '以前のメッセージを表示'),
+          ),
         if (_loading)
           const Center(child: CircularProgressIndicator())
-        else if (_messages.isEmpty)
+        else if (_messages.isEmpty && _historyError == null)
           const _InlineNotice(
             tone: _NoticeTone.warning,
             title: 'メッセージはありません',
@@ -2626,31 +2656,77 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
 
   Future<void> _loadConversation() async {
     final generation = ++_loadGeneration;
+    final conversationId = widget.student.conversationId;
     setState(() {
       _loading = true;
-      _messages.clear();
+      _historyError = null;
+      _hasOlder = false;
+      _loadingOlder = false;
+      if (_conversationId != conversationId) _messages.clear();
+      // Listen for new messages while the history request is in flight too.
+      _conversationId = conversationId;
     });
     try {
-      final student = widget.student;
-      if (student.conversationId == null) {
+      if (conversationId == null) {
         throw const ApiException('会話を選択してください。');
       }
-      final conversationId = student.conversationId!;
-      final messages = await ItClassApi.instance.chatMessages(conversationId);
+      final page = await ItClassApi.instance.chatMessagePage(conversationId);
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _conversationId = conversationId;
-        _messages.addAll(messages);
+        for (final message in page.list) {
+          _upsertMessage(message);
+        }
+        _hasOlder = page.total > _messages.length;
       });
-      _markLatestStudentMessageRead(messages);
+      _markLatestStudentMessageRead(page.list);
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() => _historyError = userFacingError(error));
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('会話履歴の取得に失敗しました：${userFacingError(error)}')),
       );
     } finally {
       if (mounted && generation == _loadGeneration) {
         setState(() => _loading = false);
+      }
+    }
+  }
+
+  Future<void> _loadOlderMessages() async {
+    final conversationId = _conversationId;
+    final ids = _messages
+        .map((message) => message.id)
+        .whereType<int>()
+        .toList();
+    if (conversationId == null || ids.isEmpty || _loadingOlder || _loading) {
+      return;
+    }
+    final generation = _loadGeneration;
+    final beforeId = ids.reduce((a, b) => a < b ? a : b);
+    setState(() {
+      _loadingOlder = true;
+      _historyError = null;
+    });
+    try {
+      final page = await ItClassApi.instance.chatMessagePage(
+        conversationId,
+        beforeMessageId: beforeId,
+      );
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        for (final message in page.list) {
+          _upsertMessage(message);
+        }
+        _hasOlder = page.list.isNotEmpty && page.total > page.list.length;
+      });
+      _markLatestStudentMessageRead(page.list);
+    } catch (error) {
+      if (mounted && generation == _loadGeneration) {
+        setState(() => _historyError = userFacingError(error));
+      }
+    } finally {
+      if (mounted && generation == _loadGeneration) {
+        setState(() => _loadingOlder = false);
       }
     }
   }
@@ -2673,6 +2749,7 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
     } else {
       _messages.add(message);
     }
+    _messages.sort((a, b) => (a.id ?? 0).compareTo(b.id ?? 0));
   }
 
   void _markLatestStudentMessageRead(List<ChatMessage> messages) {
@@ -3604,15 +3681,11 @@ class _EditableQuestionDraft extends StatelessWidget {
 class _UserRoleManagementWorkspace extends StatefulWidget {
   const _UserRoleManagementWorkspace({
     required this.section,
-    required this.classrooms,
-    required this.assignedStudents,
     required this.allStudents,
     required this.onChanged,
   });
 
   final SystemManagementSection section;
-  final List<SchoolClassroom> classrooms;
-  final List<StudentProfile> assignedStudents;
   final List<StudentProfile> allStudents;
   final Future<void> Function() onChanged;
 
@@ -3628,48 +3701,19 @@ class _UserRoleManagementWorkspaceState
   final _passwordController = TextEditingController();
   final _phoneController = TextEditingController();
   late List<StudentProfile> _managedStudents;
-  late Set<int> _assignedStudentIds;
-  int? _existingStudentId;
   bool _creatingStudent = false;
-
-  List<StudentProfile> get _availableStudents => _managedStudents
-      .where(
-        (student) =>
-            student.accountId != null &&
-            !_assignedStudentIds.contains(student.accountId),
-      )
-      .toList();
 
   @override
   void initState() {
     super.initState();
     _managedStudents = List.of(widget.allStudents);
-    _assignedStudentIds = widget.assignedStudents
-        .map((student) => student.accountId)
-        .whereType<int>()
-        .toSet();
-    _existingStudentId = _availableStudents.isEmpty
-        ? null
-        : _availableStudents.first.accountId;
   }
 
   @override
   void didUpdateWidget(covariant _UserRoleManagementWorkspace oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.allStudents != widget.allStudents ||
-        oldWidget.assignedStudents != widget.assignedStudents) {
+    if (oldWidget.allStudents != widget.allStudents) {
       _managedStudents = List.of(widget.allStudents);
-      _assignedStudentIds = widget.assignedStudents
-          .map((student) => student.accountId)
-          .whereType<int>()
-          .toSet();
-      if (!_availableStudents.any(
-        (student) => student.accountId == _existingStudentId,
-      )) {
-        _existingStudentId = _availableStudents.isEmpty
-            ? null
-            : _availableStudents.first.accountId;
-      }
     }
   }
 
@@ -3690,13 +3734,11 @@ class _UserRoleManagementWorkspaceState
         const _SectionHeader(
           icon: Icons.admin_panel_settings_rounded,
           title: 'システム管理',
-          subtitle: '学生アカウントとパスワードを作成し、既存学生を追加・確認できます。',
+          subtitle: '学生アカウントを作成し、一覧を確認できます。',
         ),
         const SizedBox(height: 16),
         if (widget.section == SystemManagementSection.createStudent)
           _createStudentCard()
-        else if (widget.section == SystemManagementSection.addExisting)
-          _addExistingStudentCard()
         else
           _allStudentsList(),
       ],
@@ -3775,59 +3817,6 @@ class _UserRoleManagementWorkspaceState
               onPressed: _creatingStudent ? null : _createStudent,
               icon: const Icon(Icons.person_add_alt_1_rounded),
               label: Text(_creatingStudent ? '作成中' : '学生アカウントを作成'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _addExistingStudentCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '既存学生を追加',
-              style: TextStyle(fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              '既存学生一覧から学生を選択し、現在の管理一覧に追加します。',
-              style: TextStyle(color: _AppPalette.muted),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<int>(
-                    initialValue: _existingStudentId,
-                    decoration: const InputDecoration(labelText: '既存学生'),
-                    items: [
-                      for (final student in _availableStudents)
-                        DropdownMenuItem(
-                          value: student.accountId,
-                          child: Text('${student.name} · ${student.email}'),
-                        ),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => _existingStudentId = value);
-                      }
-                    },
-                  ),
-                ),
-                const SizedBox(width: 10),
-                OutlinedButton.icon(
-                  onPressed: _availableStudents.isEmpty
-                      ? null
-                      : _addExistingStudent,
-                  icon: const Icon(Icons.group_add_rounded),
-                  label: const Text('追加'),
-                ),
-              ],
             ),
           ],
         ),
@@ -3915,45 +3904,6 @@ class _UserRoleManagementWorkspaceState
       }
     } finally {
       if (mounted) setState(() => _creatingStudent = false);
-    }
-  }
-
-  Future<void> _addExistingStudent() async {
-    if (_existingStudentId == null) return;
-    final existing = _managedStudents.firstWhere(
-      (student) => student.accountId == _existingStudentId,
-    );
-    if (_assignedStudentIds.contains(existing.accountId)) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('${existing.name} はすでに一覧にあります。')));
-      return;
-    }
-    try {
-      if (widget.classrooms.isEmpty || existing.accountId == null) {
-        throw const ApiException('担当クラスと学生を選択してください。');
-      }
-      await ItClassApi.instance.addExistingStudent(
-        classroomId: widget.classrooms.first.id,
-        studentAccountId: existing.accountId!,
-      );
-      if (!mounted) return;
-      setState(() {
-        _assignedStudentIds.add(existing.accountId!);
-        _existingStudentId = _availableStudents.isEmpty
-            ? null
-            : _availableStudents.first.accountId;
-      });
-      await widget.onChanged();
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('${existing.name} を追加しました。')));
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('既存学生の追加に失敗しました：${userFacingError(error)}')),
-      );
     }
   }
 }

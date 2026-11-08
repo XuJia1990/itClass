@@ -21,6 +21,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   List<StudentProfile> _allStudentsFromApi = const [];
   List<CodeReviewItem> _codeReviewsFromApi = const [];
   bool _loading = false;
+  bool _replySending = false;
   String? _apiError;
   StreamSubscription<ChatMessage>? _chatMessageSubscription;
 
@@ -57,6 +58,9 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
       items: _teacherMenu,
       onSelect: (index) {
         setState(() => _section = TeacherSection.values[index]);
+        if (_section == TeacherSection.studentMessages) {
+          unawaited(_reloadChatStudents());
+        }
       },
       onLogout: _logout,
       middle: _teacherMiddlePanel(),
@@ -101,6 +105,14 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         return _HistoryPanel(
           title: '学生（直接チャット）',
           children: [
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: _loading ? null : _reloadChatStudents,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('会話一覧を更新'),
+              ),
+            ),
             if (_teacherStudents.isEmpty)
               const _InlineNotice(
                 tone: _NoticeTone.warning,
@@ -148,15 +160,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
               detail: 'ここで学生名、メール、初期パスワード、連絡先を入力します。',
               onTap: () => setState(
                 () => _systemSection = SystemManagementSection.createStudent,
-              ),
-            ),
-            _CompactListCard(
-              selected: _systemSection == SystemManagementSection.addExisting,
-              title: '既存学生を追加',
-              subtitle: '学生一覧から追加',
-              detail: '既存学生を選択して現在のクラスに追加します。',
-              onTap: () => setState(
-                () => _systemSection = SystemManagementSection.addExisting,
               ),
             ),
             _CompactListCard(
@@ -225,6 +228,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         return _TeacherRequestWorkspace(
           request: _requests[_selectedRequest.clamp(0, _requests.length - 1)],
           controller: _replyInput,
+          sending: _replySending,
           onSubmit: () => unawaited(_answerRequest()),
         );
       case TeacherSection.codeScoring:
@@ -272,8 +276,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
       case TeacherSection.system:
         return _UserRoleManagementWorkspace(
           section: _systemSection,
-          classrooms: _classrooms,
-          assignedStudents: _teacherStudents,
           allStudents: _allStudentsFromApi,
           onChanged: _loadTeacherData,
         );
@@ -297,8 +299,9 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
 
   Future<void> _answerRequest() async {
     final text = _replyInput.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || _replySending || _requests.isEmpty) return;
     final request = _requests[_selectedRequest];
+    setState(() => _replySending = true);
     try {
       if (request.questionId == null) {
         throw const ApiException('質問を選択してください。');
@@ -309,20 +312,53 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
       );
       if (!mounted) return;
       setState(() {
-        _requests[_selectedRequest] = request.copyWith(
-          answered: true,
-          teacherAnswer: text,
+        final index = _requests.indexWhere(
+          (item) => item.questionId == request.questionId,
         );
-        _replyInput.clear();
+        if (index >= 0) {
+          _requests[index] = _requests[index].copyWith(
+            answered: true,
+            teacherAnswer: text,
+            teacherReplies: [..._requests[index].teacherReplies, text],
+          );
+        }
+        if (_requests[_selectedRequest].questionId == request.questionId &&
+            _replyInput.text.trim() == text) {
+          _replyInput.clear();
+        }
       });
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('学生への回答を保存しました。')));
+      // Refresh after a successful write without resending it if the read fails.
+      try {
+        final updated = await ItClassApi.instance.teacherAiQuestion(
+          request.questionId!,
+        );
+        if (!mounted) return;
+        final index = _requests.indexWhere(
+          (item) => item.questionId == request.questionId,
+        );
+        if (index >= 0) setState(() => _requests[index] = updated);
+      } catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '回答は保存されました。履歴の更新に失敗しました：${userFacingError(error)}',
+              ),
+            ),
+          );
+        }
+      }
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('回答を保存できませんでした：${userFacingError(error)}')),
       );
+    } finally {
+      if (mounted) setState(() => _replySending = false);
     }
   }
 

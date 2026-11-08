@@ -947,6 +947,14 @@ class ItClassApi {
     return _page(data, _teacherRequestFromJson);
   }
 
+  Future<TeacherRequest> teacherAiQuestion(int questionId) async {
+    final data = await _get<Map<String, dynamic>>(
+      '/school/ai-teacher/question/get',
+      query: {'id': '$questionId'},
+    );
+    return _teacherRequestFromJson(data);
+  }
+
   Future<void> replyAiQuestion({
     required int questionId,
     required String answer,
@@ -1011,15 +1019,24 @@ class ItClassApi {
   }
 
   Future<List<ChatMessage>> chatMessages(int conversationId) async {
+    return (await chatMessagePage(conversationId)).list;
+  }
+
+  Future<ApiPage<ChatMessage>> chatMessagePage(
+    int conversationId, {
+    int? beforeMessageId,
+  }) async {
     final data = await _get<Map<String, dynamic>>(
       '/school/chat/message/page',
       query: {
         'pageNo': '1',
         'pageSize': '100',
         'conversationId': '$conversationId',
+        if (beforeMessageId != null) 'beforeMessageId': '$beforeMessageId',
       },
     );
-    return _page(data, _chatMessageFromJson).list.reversed.toList();
+    final page = _page(data, _chatMessageFromJson);
+    return ApiPage(list: page.list.reversed.toList(), total: page.total);
   }
 
   Future<void> readChatMessages({
@@ -1096,17 +1113,6 @@ class ItClassApi {
       },
     );
     return _studentProfileFromAccountJson(_asMap(data));
-  }
-
-  Future<int> addExistingStudent({
-    required int classroomId,
-    required int studentAccountId,
-  }) async {
-    final data = await _post<dynamic>(
-      '/school/account/add-existing-student',
-      body: {'classroomId': classroomId, 'studentAccountId': studentAccountId},
-    );
-    return _asInt(data) ?? 0;
   }
 
   Future<int> createQuestion(
@@ -1622,6 +1628,7 @@ ExamQuestion _generatedExamQuestionFromJson(Map<String, dynamic> json) {
 
 TeacherRequest _teacherRequestFromJson(Map<String, dynamic> json) {
   final teacherAnswer = _asString(json['teacherAnswer']);
+  final replies = _teacherRepliesFromJson(json);
   return TeacherRequest(
     questionId: _asInt(json['id']),
     conversationId: _asInt(json['conversationId']),
@@ -1632,12 +1639,10 @@ TeacherRequest _teacherRequestFromJson(Map<String, dynamic> json) {
     ),
     category: _asString(json['classroomName'], fallback: 'AI質問'),
     question: _asString(json['questionContent']),
-    aiAnswer: _asString(
-      json['aiAnswer'] ?? json['aiErrorMessage'],
-      fallback: 'AI回答なし',
-    ),
-    answered: teacherAnswer.isNotEmpty,
+    aiAnswer: _asString(json['aiAnswer'], fallback: 'AI回答なし'),
+    answered: replies.isNotEmpty,
     teacherAnswer: teacherAnswer.isEmpty ? null : teacherAnswer,
+    teacherReplies: replies,
   );
 }
 
@@ -1756,22 +1761,32 @@ Topic _topicFromAiConversationJson(Map<String, dynamic> json) {
   );
 }
 
+List<String> _teacherRepliesFromJson(Map<String, dynamic> json) {
+  final replies = _asList(json['teacherReplies'])
+      .map((reply) => _asString(_asMap(reply)['answer']))
+      .where((answer) => answer.trim().isNotEmpty)
+      .toList();
+  if (replies.isNotEmpty) return replies;
+  final legacy = _asString(json['teacherAnswer']);
+  return legacy.trim().isEmpty ? [] : [legacy];
+}
+
 List<ChatMessage> chatMessagesFromAiQuestionJson(Map<String, dynamic> json) {
   final question = _asString(json['questionContent']);
-  if (_asInt(json['status']) == 20) {
+  final teacherReplies = _teacherRepliesFromJson(json);
+  if (_asInt(json['status']) == 20 && teacherReplies.isEmpty) {
     return [
       if (question.isNotEmpty) ChatMessage.student(question),
       ChatMessage.ai(aiAnswerPendingTeacherMessage),
     ];
   }
   final aiAnswer = _asString(json['aiAnswer']);
-  final teacherAnswer = _asString(json['teacherAnswer']);
   final legacyAnswer = _asString(json['effectiveAnswer']);
   return [
     if (question.isNotEmpty) ChatMessage.student(question),
     if (aiAnswer.isNotEmpty) ChatMessage.ai(aiAnswer),
-    if (teacherAnswer.isNotEmpty) ChatMessage.teacher(teacherAnswer),
-    if (aiAnswer.isEmpty && teacherAnswer.isEmpty && legacyAnswer.isNotEmpty)
+    for (final answer in teacherReplies) ChatMessage.teacher(answer),
+    if (aiAnswer.isEmpty && teacherReplies.isEmpty && legacyAnswer.isNotEmpty)
       ChatMessage.ai(legacyAnswer),
   ];
 }

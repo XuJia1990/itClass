@@ -16,16 +16,18 @@ class _LearningLanguageFilter extends StatelessWidget {
     required this.languages,
     required this.value,
     required this.onChanged,
+    this.decoration = const InputDecoration(labelText: '学習言語 / 教室'),
   });
   final List<String> languages;
   final String? value;
   final ValueChanged<String?> onChanged;
+  final InputDecoration decoration;
   @override
   Widget build(BuildContext context) => DropdownButtonFormField<String>(
     key: ValueKey('language-filter-$value'),
     initialValue: value ?? '',
     isExpanded: true,
-    decoration: const InputDecoration(labelText: '学習言語 / 教室'),
+    decoration: decoration,
     items: [
       const DropdownMenuItem(value: '', child: Text('すべて')),
       for (final language in _uniqueLanguages([...languages, ?value]))
@@ -125,49 +127,73 @@ class _TeacherGradingWorkspaceState extends State<_TeacherGradingWorkspace> {
       const _SectionHeader(
         icon: Icons.fact_check_outlined,
         title: '答案の採点',
-        subtitle: '担当試験',
+        subtitle: '学生が提出した答案を確認・採点します。',
       ),
-      Wrap(
-        spacing: 16,
-        runSpacing: 12,
-        children: [
-          SizedBox(
-            width: 240,
-            child: _LearningLanguageFilter(
-              languages: _classrooms
-                  .map((room) => room.programmingLanguage)
-                  .toList(),
-              value: _language,
-              onChanged: (value) {
-                setState(() => _language = value);
-                unawaited(_load(page: 1));
-              },
-            ),
+      const SizedBox(height: 24),
+      Card(
+        margin: EdgeInsets.zero,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final stacked = constraints.maxWidth < 540;
+              return Wrap(
+                spacing: 16,
+                runSpacing: 16,
+                crossAxisAlignment: WrapCrossAlignment.end,
+                children: [
+                  SizedBox(
+                    width: stacked ? constraints.maxWidth : 240,
+                    child: _GradingFilterField(
+                      label: '学習言語',
+                      child: _LearningLanguageFilter(
+                        decoration: const InputDecoration(),
+                        languages: _classrooms
+                            .map((room) => room.programmingLanguage)
+                            .toList(),
+                        value: _language,
+                        onChanged: (value) {
+                          setState(() => _language = value);
+                          unawaited(_load(page: 1));
+                        },
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: stacked ? constraints.maxWidth : 180,
+                    child: _GradingFilterField(
+                      label: '採点状況',
+                      child: DropdownButtonFormField<int>(
+                        initialValue: _status ?? -1,
+                        isExpanded: true,
+                        decoration: const InputDecoration(),
+                        items: const [
+                          DropdownMenuItem(value: -1, child: Text('すべて')),
+                          DropdownMenuItem(value: 20, child: Text('採点待ち')),
+                          DropdownMenuItem(value: 30, child: Text('採点済み')),
+                        ],
+                        onChanged: (value) {
+                          setState(() => _status = value == -1 ? null : value);
+                          unawaited(_load(page: 1));
+                        },
+                      ),
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _loading ? null : () => _load(),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(96, 48),
+                    ),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('更新'),
+                  ),
+                ],
+              );
+            },
           ),
-          SizedBox(
-            width: 180,
-            child: DropdownButtonFormField<int>(
-              initialValue: _status ?? -1,
-              decoration: const InputDecoration(labelText: '採点状況'),
-              items: const [
-                DropdownMenuItem(value: -1, child: Text('すべて')),
-                DropdownMenuItem(value: 20, child: Text('採点待ち')),
-                DropdownMenuItem(value: 30, child: Text('採点済み')),
-              ],
-              onChanged: (value) {
-                setState(() => _status = value == -1 ? null : value);
-                unawaited(_load(page: 1));
-              },
-            ),
-          ),
-          IconButton(
-            tooltip: '更新',
-            onPressed: _loading ? null : () => _load(),
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
+        ),
       ),
-      const SizedBox(height: 16),
+      const SizedBox(height: 24),
       if (_loading) const LinearProgressIndicator(),
       if (_error != null)
         _InlineNotice(
@@ -176,7 +202,29 @@ class _TeacherGradingWorkspaceState extends State<_TeacherGradingWorkspace> {
           message: _error!,
         ),
       if (!_loading && _rows.isEmpty && _error == null)
-        const Text('該当する答案はありません。'),
+        const Card(
+          margin: EdgeInsets.zero,
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.assignment_outlined,
+                  size: 36,
+                  color: _AppPalette.muted,
+                ),
+                SizedBox(height: 16),
+                Text('該当する答案はありません。', textAlign: TextAlign.center),
+                SizedBox(height: 8),
+                Text(
+                  '学習言語や採点状況を変更すると、ほかの答案を確認できます。',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: _AppPalette.muted),
+                ),
+              ],
+            ),
+          ),
+        ),
       for (final row in _rows)
         Card(
           child: ListTile(
@@ -193,26 +241,58 @@ class _TeacherGradingWorkspaceState extends State<_TeacherGradingWorkspace> {
             ),
           ),
         ),
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          IconButton(
-            tooltip: '前へ',
-            onPressed: _loading || _page <= 1
-                ? null
-                : () => _load(page: _page - 1),
-            icon: const Icon(Icons.chevron_left),
-          ),
-          Text('$_page · 全 $_total 件'),
-          IconButton(
-            tooltip: '次へ',
-            onPressed: _loading || _page * 20 >= _total
-                ? null
-                : () => _load(page: _page + 1),
-            icon: const Icon(Icons.chevron_right),
-          ),
-        ],
+      if (_total > 0 && _error == null)
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            IconButton(
+              tooltip: '前へ',
+              onPressed: _loading || _page <= 1
+                  ? null
+                  : () => _load(page: _page - 1),
+              icon: const Icon(Icons.chevron_left),
+            ),
+            Flexible(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text(
+                  '$_page / ${(_total / 20).ceil()}ページ · 全 $_total 件',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+            IconButton(
+              tooltip: '次へ',
+              onPressed: _loading || _page * 20 >= _total
+                  ? null
+                  : () => _load(page: _page + 1),
+              icon: const Icon(Icons.chevron_right),
+            ),
+          ],
+        ),
+    ],
+  );
+}
+
+class _GradingFilterField extends StatelessWidget {
+  const _GradingFilterField({required this.label, required this.child});
+
+  final String label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        label,
+        style: const TextStyle(
+          color: _AppPalette.muted,
+          fontWeight: FontWeight.w600,
+        ),
       ),
+      const SizedBox(height: 8),
+      Semantics(label: label, child: child),
     ],
   );
 }

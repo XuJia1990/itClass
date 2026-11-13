@@ -61,10 +61,12 @@ jobs:
           flutter build web --release
           --dart-define=TWSCHOOL_API_BASE_URL=${{ env.API_BASE_URL }}
 
-      - name: Version the application entrypoint
+      - name: Version the application entrypoint and assets
         run: |
           python3 - <<'PYTHON'
           import os
+          import json
+          import shutil
           from pathlib import Path
           bootstrap = Path('build/web/flutter_bootstrap.js')
           source = bootstrap.read_text()
@@ -72,7 +74,21 @@ jobs:
           if original not in source:
               raise SystemExit('Flutter bootstrap entrypoint was not found')
           versioned = '"mainJsPath":"main.dart.js?v=' + os.environ['GITHUB_SHA'] + '"'
-          bootstrap.write_text(source.replace(original, versioned))
+          source = source.replace(original, versioned)
+          loader = '_flutter.loader.load({'
+          if source.count(loader) != 1:
+              raise SystemExit('Flutter loader configuration was not found')
+          # The icon font is tree-shaken for each build. Give it (and the asset
+          # manifests) a new URL so cached fonts cannot hide new UI icons.
+          asset_base = 'releases/' + os.environ['GITHUB_SHA'] + '/'
+          shutil.copytree(
+              Path('build/web/assets'),
+              Path('build/web') / asset_base / 'assets',
+              dirs_exist_ok=True,
+          )
+          config = json.dumps({'assetBase': asset_base})
+          source = source.replace(loader, loader + '\n  config: ' + config + ',')
+          bootstrap.write_text(source)
           PYTHON
 
       - name: Login to GitHub Container Registry

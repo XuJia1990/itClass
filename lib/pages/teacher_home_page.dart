@@ -24,6 +24,11 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   bool _replySending = false;
   String? _apiError;
   StreamSubscription<ChatMessage>? _chatMessageSubscription;
+  StreamSubscription<void>? _aiQuestionSubscription;
+  bool _questionsLoading = false;
+  bool _questionsReloadQueued = false;
+  String? _aiQuestionsError;
+  int _questionWriteVersion = 0;
 
   final List<TeacherRequest> _requests = [];
 
@@ -37,12 +42,15 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     _chatMessageSubscription = SchoolChatRealtime.instance.messages.listen(
       _handleRealtimeChatMessage,
     );
+    _aiQuestionSubscription = SchoolChatRealtime.instance.aiQuestionChanges
+        .listen((_) => unawaited(_reloadAiQuestions()));
     unawaited(_loadTeacherData());
   }
 
   @override
   void dispose() {
     unawaited(_chatMessageSubscription?.cancel());
+    unawaited(_aiQuestionSubscription?.cancel());
     _replyInput.dispose();
     super.dispose();
   }
@@ -56,10 +64,19 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
       profileRole: '先生',
       activeIndex: TeacherSection.values.indexOf(_section),
       items: _teacherMenu,
+      notificationIndices: {
+        if (_requests.any((request) => !request.answered))
+          TeacherSection.pendingAi.index,
+        if (_teacherStudents.any((student) => student.unreadCount > 0))
+          TeacherSection.studentMessages.index,
+      },
       onSelect: (index) {
         setState(() => _section = TeacherSection.values[index]);
         if (_section == TeacherSection.studentMessages) {
           unawaited(_reloadChatStudents());
+        }
+        if (_section == TeacherSection.pendingAi) {
+          unawaited(_reloadAiQuestions());
         }
       },
       onLogout: _logout,
@@ -76,6 +93,11 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           title: '学生のAI質問',
           actionLabel: '${_requests.where((e) => !e.answered).length}件未対応',
           children: [
+            if (_aiQuestionsError != null)
+              Text(
+                _aiQuestionsError!,
+                style: const TextStyle(color: _AppPalette.coral),
+              ),
             if (_apiError != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
@@ -97,6 +119,8 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
                 subtitle: _requests[i].category,
                 detail: _requests[i].question,
                 badge: _requests[i].answered ? '先生回答済み' : '先生未回答',
+                showNotificationDot: !_requests[i].answered,
+                notificationLabel: '先生未回答の質問あり',
                 onTap: () => setState(() => _selectedRequest = i),
               ),
           ],
@@ -311,6 +335,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         answer: text,
       );
       if (!mounted) return;
+      _questionWriteVersion++;
       setState(() {
         final index = _requests.indexWhere(
           (item) => item.questionId == request.questionId,
@@ -329,7 +354,10 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
             ],
           );
         }
-        if (_requests[_selectedRequest].questionId == request.questionId &&
+        if (_requests.isNotEmpty &&
+            _requests[_selectedRequest.clamp(0, _requests.length - 1)]
+                    .questionId ==
+                request.questionId &&
             _replyInput.text.trim() == text) {
           _replyInput.clear();
         }
@@ -365,7 +393,57 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         SnackBar(content: Text('回答を保存できませんでした：${userFacingError(error)}')),
       );
     } finally {
-      if (mounted) setState(() => _replySending = false);
+      if (mounted) {
+        setState(() => _replySending = false);
+        if (_questionsReloadQueued) unawaited(_reloadAiQuestions());
+      }
+    }
+  }
+
+  Future<void> _reloadAiQuestions() async {
+    if (_questionsLoading || _replySending) {
+      _questionsReloadQueued = true;
+      return;
+    }
+    setState(() {
+      _questionsLoading = true;
+      _questionsReloadQueued = false;
+      _aiQuestionsError = null;
+    });
+    try {
+      final writeVersion = _questionWriteVersion;
+      final page = await ItClassApi.instance.teacherAiQuestions();
+      if (!mounted) return;
+      if (_replySending || writeVersion != _questionWriteVersion) {
+        _questionsReloadQueued = true;
+        return;
+      }
+      final selectedId = _requests.isEmpty
+          ? null
+          : _requests[_selectedRequest.clamp(0, _requests.length - 1)]
+                .questionId;
+      setState(() {
+        _requests
+          ..clear()
+          ..addAll(page.list);
+        final index = _requests.indexWhere(
+          (item) => item.questionId == selectedId,
+        );
+        _selectedRequest = index < 0 ? 0 : index;
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => _aiQuestionsError = 'AI質問を更新できませんでした：${userFacingError(error)}',
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _questionsLoading = false);
+        if (_questionsReloadQueued && !_replySending) {
+          unawaited(_reloadAiQuestions());
+        }
+      }
     }
   }
 
@@ -395,12 +473,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         ItClassApi.instance.availableClassrooms,
         (value) => _classrooms = value,
       ),
-      load('AI質問', () => ItClassApi.instance.teacherAiQuestions(), (value) {
-        _requests
-          ..clear()
-          ..addAll(value.list);
-        _selectedRequest = 0;
-      }),
+      _reloadAiQuestions(),
       load(
         '学生',
         ItClassApi.instance.simpleStudents,

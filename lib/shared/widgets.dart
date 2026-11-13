@@ -13,6 +13,7 @@ class _ResponsiveShell extends StatelessWidget {
     required this.middle,
     required this.content,
     required this.topActions,
+    this.notificationIndices = const {},
   });
 
   final String title;
@@ -26,6 +27,7 @@ class _ResponsiveShell extends StatelessWidget {
   final Widget middle;
   final Widget content;
   final List<Widget> topActions;
+  final Set<int> notificationIndices;
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +45,7 @@ class _ResponsiveShell extends StatelessWidget {
                   profileName: profileName,
                   profileRole: profileRole,
                   items: items,
+                  notificationIndices: notificationIndices,
                   activeIndex: activeIndex,
                   onSelect: onSelect,
                   onLogout: onLogout,
@@ -93,6 +96,7 @@ class _ResponsiveShell extends StatelessWidget {
               profileName: profileName,
               profileRole: profileRole,
               items: items,
+              notificationIndices: notificationIndices,
               activeIndex: activeIndex,
               onSelect: (index) {
                 onSelect(index);
@@ -147,6 +151,7 @@ class _SideMenu extends StatelessWidget {
     required this.onSelect,
     required this.onLogout,
     this.compact = false,
+    this.notificationIndices = const {},
   });
 
   final String profileName;
@@ -156,6 +161,7 @@ class _SideMenu extends StatelessWidget {
   final ValueChanged<int> onSelect;
   final VoidCallback onLogout;
   final bool compact;
+  final Set<int> notificationIndices;
 
   @override
   Widget build(BuildContext context) {
@@ -241,6 +247,7 @@ class _SideMenu extends StatelessWidget {
                 _MenuTile(
                   item: items[i],
                   selected: activeIndex == i,
+                  showNotificationDot: notificationIndices.contains(i),
                   onTap: () => onSelect(i),
                 ),
               const Spacer(),
@@ -262,11 +269,13 @@ class _MenuTile extends StatelessWidget {
     required this.item,
     required this.selected,
     required this.onTap,
+    this.showNotificationDot = false,
   });
 
   final MenuItem item;
   final bool selected;
   final VoidCallback onTap;
+  final bool showNotificationDot;
 
   @override
   Widget build(BuildContext context) {
@@ -310,12 +319,33 @@ class _MenuTile extends StatelessWidget {
                   ),
                 ),
               ),
+              if (showNotificationDot)
+                _NotificationDot(label: '${item.label}：未対応の通知あり'),
             ],
           ),
         ),
       ),
     );
   }
+}
+
+class _NotificationDot extends StatelessWidget {
+  const _NotificationDot({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: label,
+    child: Container(
+      width: 10,
+      height: 10,
+      margin: const EdgeInsets.only(left: 8),
+      decoration: const BoxDecoration(
+        color: Color(0xFFEF4444),
+        shape: BoxShape.circle,
+      ),
+    ),
+  );
 }
 
 class _HistoryPanel extends StatelessWidget {
@@ -391,6 +421,7 @@ class _CompactListCard extends StatelessWidget {
     this.selected = false,
     this.badge,
     this.showNotificationDot = false,
+    this.notificationLabel = '未読メッセージあり',
   });
 
   final String title;
@@ -400,6 +431,7 @@ class _CompactListCard extends StatelessWidget {
   final bool selected;
   final String? badge;
   final bool showNotificationDot;
+  final String notificationLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -443,7 +475,7 @@ class _CompactListCard extends StatelessWidget {
                           vertical: 3,
                         ),
                         decoration: BoxDecoration(
-                          color: badge == '未回答'
+                          color: badge == '未回答' || badge == '先生未回答'
                               ? const Color(0xFFFFF7ED)
                               : _AppPalette.wash,
                           borderRadius: BorderRadius.circular(8),
@@ -451,7 +483,7 @@ class _CompactListCard extends StatelessWidget {
                         child: Text(
                           badge!,
                           style: TextStyle(
-                            color: badge == '未回答'
+                            color: badge == '未回答' || badge == '先生未回答'
                                 ? const Color(0xFFC2410C)
                                 : const Color(0xFF047857),
                             fontSize: 12,
@@ -459,18 +491,7 @@ class _CompactListCard extends StatelessWidget {
                         ),
                       ),
                     if (showNotificationDot)
-                      Semantics(
-                        label: '未読メッセージあり',
-                        child: Container(
-                          width: 10,
-                          height: 10,
-                          margin: const EdgeInsets.only(left: 8),
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFEF4444),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ),
+                      _NotificationDot(label: notificationLabel),
                   ],
                 ),
                 const SizedBox(height: 6),

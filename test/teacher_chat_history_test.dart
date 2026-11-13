@@ -23,6 +23,8 @@ void main() {
   late List<http.Request> requests;
   var failHistory = false;
   var failReplyRefresh = false;
+  var failReply = false;
+  var extraQuestion = false;
   Completer<http.Response>? pendingReply;
   Completer<http.Response>? pendingHistory;
   Map<String, dynamic> question() => {
@@ -51,6 +53,8 @@ void main() {
     requests = [];
     failHistory = false;
     failReplyRefresh = false;
+    failReply = false;
+    extraQuestion = false;
     pendingReply = null;
     pendingHistory = null;
     ItClassSession.current = AuthSession.fromJson({
@@ -72,8 +76,18 @@ void main() {
           return envelope({'list': [], 'total': 0});
         case '/app-api/school/ai-teacher/question/page':
           return envelope({
-            'list': [question()],
-            'total': 1,
+            'list': [
+              if (extraQuestion)
+                {
+                  ...question(),
+                  'id': 12,
+                  'questionContent': '新しく届いた質問',
+                  'teacherReplies': [],
+                  'teacherAnswer': null,
+                },
+              question(),
+            ],
+            'total': extraQuestion ? 2 : 1,
           });
         case '/app-api/school/ai-teacher/question/get':
           return envelope(
@@ -81,6 +95,7 @@ void main() {
             code: failReplyRefresh ? 500 : 0,
           );
         case '/app-api/school/ai-teacher/question/reply':
+          if (failReply) return envelope(null, code: 500);
           replies.add({
             'id': replies.length + 1,
             'answer': jsonDecode(request.body)['answer'],
@@ -186,6 +201,90 @@ void main() {
     expect(replies, hasLength(2));
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'unanswered dots survive reading and failed replies and clear after success',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      try {
+        await mount(tester);
+        final cardDot = find.bySemanticsLabel(RegExp('先生未回答の質問あり'));
+        final menuDot = find.bySemanticsLabel(RegExp('学生のAI質問対応：未対応の通知あり'));
+        expect(cardDot, findsOneWidget);
+        expect(menuDot, findsOneWidget);
+        await tester.tap(find.text('配列とは？').first);
+        await tester.pumpAndSettle();
+        expect(cardDot, findsOneWidget); // Opening is not answering.
+        failReply = true;
+        await tester.enterText(find.byType(TextField), '回答');
+        await tester.tap(find.text('学生へ回答'));
+        await tester.pumpAndSettle();
+        expect(cardDot, findsOneWidget);
+        expect(menuDot, findsOneWidget);
+        failReply = false;
+        await tester.tap(find.text('学生へ回答'));
+        await tester.pumpAndSettle();
+        expect(cardDot, findsNothing);
+        expect(menuDot, findsNothing);
+      } finally {
+        semantics.dispose();
+      }
+    },
+  );
+
+  testWidgets(
+    'AI push updates the menu off-page without polling or losing a reply draft',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      try {
+        await mount(tester);
+        await tester.enterText(find.byType(TextField), '書きかけの回答');
+        await tester.tap(find.text('システム管理'));
+        await tester.pumpAndSettle();
+        extraQuestion = true;
+        replies.add({'id': 1, 'answer': '別の先生の回答'});
+        SchoolChatRealtime.instance.receiveFrameForTesting(
+          jsonEncode({
+            'type': 'school-ai-question-changed',
+            'content': {'questionId': 12},
+          }),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.bySemanticsLabel(RegExp('学生のAI質問対応：未対応の通知あり')),
+          findsOneWidget,
+        );
+        final reads = requests.length;
+        await tester.pump(const Duration(minutes: 2));
+        expect(requests.length, reads);
+        await tester.tap(find.text('学生のAI質問対応'));
+        await tester.pumpAndSettle();
+        expect(find.text('新しく届いた質問'), findsOneWidget);
+        expect(find.text('1件未対応'), findsOneWidget);
+        expect(find.bySemanticsLabel(RegExp('先生未回答の質問あり')), findsOneWidget);
+        expect(
+          tester.widget<TextField>(find.byType(TextField)).controller!.text,
+          '書きかけの回答',
+        );
+        expect(find.text('生徒A の質問'), findsOneWidget);
+        // Another teacher can answer while this page is open too.
+        extraQuestion = false;
+        SchoolChatRealtime.instance.receiveFrameForTesting(
+          jsonEncode({
+            'type': 'school-ai-question-changed',
+            'content': {'questionId': 12},
+          }),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.bySemanticsLabel(RegExp('学生のAI質問対応：未対応の通知あり')),
+          findsNothing,
+        );
+      } finally {
+        semantics.dispose();
+      }
+    },
+  );
 
   testWidgets(
     'sending is guarded and a failed read never resends a saved reply',

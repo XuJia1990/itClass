@@ -127,6 +127,7 @@ class SchoolChatRealtime {
   static const _reconnectDelay = Duration(seconds: 3);
 
   final _messages = StreamController<ChatMessage>.broadcast();
+  final _aiQuestionChanges = StreamController<void>.broadcast();
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _subscription;
   Timer? _reconnectTimer;
@@ -134,6 +135,10 @@ class SchoolChatRealtime {
   bool _closedByClient = true;
 
   Stream<ChatMessage> get messages => _messages.stream;
+  Stream<void> get aiQuestionChanges => _aiQuestionChanges.stream;
+
+  @visibleForTesting
+  void receiveFrameForTesting(String frame) => _handleFrame(frame);
 
   static Uri webSocketUri(String token) {
     final base = Uri.parse(ItClassApi.baseUrl);
@@ -172,6 +177,19 @@ class SchoolChatRealtime {
     try {
       final channel = WebSocketChannel.connect(uri);
       _channel = channel;
+      unawaited(
+        channel.ready.then(
+          (_) {
+            // Reconcile missed changes once after connecting/reconnecting.
+            if (_channel == channel && !_closedByClient) {
+              _aiQuestionChanges.add(null);
+            }
+          },
+          onError: (Object error) {
+            if (_channel == channel) _scheduleReconnect();
+          },
+        ),
+      );
       debugPrint(
         '[itClass WS] connecting '
         '${uri.scheme}://${uri.authority}${uri.path}',
@@ -197,6 +215,10 @@ class SchoolChatRealtime {
   void _handleFrame(dynamic frame) {
     try {
       final envelope = _asMap(jsonDecode('$frame'));
+      if (_asString(envelope['type']) == 'school-ai-question-changed') {
+        _aiQuestionChanges.add(null);
+        return;
+      }
       if (_asString(envelope['type']) != _messageType) return;
       final rawContent = envelope['content'];
       final content = rawContent is String
@@ -1014,15 +1036,28 @@ class ItClassApi {
   }
 
   Future<ApiPage<TeacherRequest>> teacherAiQuestions({int? classroomId}) async {
-    final data = await _get<Map<String, dynamic>>(
-      '/school/ai-teacher/question/page',
-      query: {
-        'pageNo': '1',
-        'pageSize': '100',
-        if (classroomId != null) 'classroomId': '$classroomId',
-      },
-    );
-    return _page(data, _teacherRequestFromJson);
+    final result = <TeacherRequest>[];
+    var pageNo = 1;
+    while (true) {
+      final data = await _get<Map<String, dynamic>>(
+        '/school/ai-teacher/question/page',
+        query: {
+          'pageNo': '$pageNo',
+          'pageSize': '100',
+          if (classroomId != null) 'classroomId': '$classroomId',
+        },
+      );
+      final page = _page(data, _teacherRequestFromJson);
+      final existingIds = result.map((item) => item.questionId).toSet();
+      final additions = page.list
+          .where((item) => !existingIds.contains(item.questionId))
+          .toList();
+      result.addAll(additions);
+      if (additions.isEmpty || pageNo * 100 >= page.total) {
+        return ApiPage(list: result, total: page.total);
+      }
+      pageNo++;
+    }
   }
 
   Future<TeacherRequest> teacherAiQuestion(int questionId) async {

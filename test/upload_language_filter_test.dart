@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -64,6 +65,21 @@ void main() {
         ];
       } else if (path.endsWith('/save')) {
         data = 999;
+      } else if (path.endsWith('/infra/file/upload')) {
+        data = 'https://example.invalid/uploaded-resource';
+      } else if (path.endsWith('/teacher-create')) {
+        data = 901;
+      } else if (path.endsWith('/teacher-get')) {
+        data = {
+          'id': int.parse(request.url.queryParameters['id']!),
+          'title': '既存のPHP教材',
+          'programmingLanguage': 'PHP',
+          'teacherAccountIds': [27],
+          'version': 1,
+          'status': 0,
+          'videoUrl': 'https://example.invalid/existing.mp4',
+          'documentUrl': 'https://example.invalid/existing.pdf',
+        };
       } else if (path.endsWith('/teacher-page')) {
         data = {
           'list': [
@@ -102,6 +118,16 @@ void main() {
     client.close();
   });
 
+  Future<void> settle(WidgetTester tester) async {
+    await tester.pump();
+    if (find.byType(AlertDialog).evaluate().isNotEmpty) {
+      // The queued upload stays busy behind its metadata dialog.
+      await tester.pump(const Duration(milliseconds: 400));
+    } else {
+      await tester.pumpAndSettle();
+    }
+  }
+
   Future<void> tap(WidgetTester tester, Finder finder) async {
     if (finder.evaluate().isEmpty) {
       await tester.scrollUntilVisible(
@@ -116,9 +142,9 @@ void main() {
       );
     }
     await tester.ensureVisible(finder);
-    await tester.pumpAndSettle();
+    await settle(tester);
     await tester.tap(finder);
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(tester.takeException(), isNull);
   }
 
@@ -189,6 +215,107 @@ void main() {
     }
     await tester.ensureVisible(finder);
     await tester.pumpAndSettle();
+  }
+
+  Future<void> pickMaterial(WidgetTester tester, String extension) async {
+    const channel = MethodChannel('miguelruivo.flutter.plugins.filepicker');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      expect(call.method, 'custom');
+      expect(call.arguments['allowedExtensions'], contains(extension));
+      return [
+        {
+          'name': 'lesson.$extension',
+          'size': 4,
+          'bytes': Uint8List.fromList([116, 101, 115, 116]),
+        },
+      ];
+    });
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        null,
+      ),
+    );
+    await tap(tester, find.text('ファイルを選択'));
+    await tester.pumpAndSettle();
+    await tap(tester, find.text('アップロード'));
+  }
+
+  Future<void> expectMaterialLanguage(
+    WidgetTester tester,
+    String language,
+  ) async {
+    final input = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: field('プログラミング言語（分類・任意）'),
+    );
+    await tester.ensureVisible(input);
+    await settle(tester);
+    expect(tester.widget<TextField>(input).controller!.text, language);
+  }
+
+  for (final material in [
+    ('動画アップロード', 'mp4', 'course-video'),
+    ('文書教材アップロード', 'pdf', 'course-document'),
+  ]) {
+    testWidgets(
+      '${material.$1} defaults and create payload use current filter',
+      (tester) async {
+        languages = ['Flutter', 'JAVA', 'PHP'];
+        await mount(tester, 1280);
+        await selectType(tester, material.$1, 1280);
+        // All defaults to the first assigned language, not a hardcoded Java.
+        await pickMaterial(tester, material.$2);
+        await expectMaterialLanguage(tester, 'Flutter');
+        await tap(tester, find.text('閉じる'));
+        expect(
+          requests.where((r) => r.url.path.endsWith('/infra/file/upload')),
+          isEmpty,
+        );
+
+        for (final language in ['PHP', 'Flutter', 'JAVA']) {
+          await selectLanguage(tester, language);
+          // Opening the same queued file again must use the latest filter.
+          await tap(tester, find.text('アップロード'));
+          await expectMaterialLanguage(tester, language);
+          await tap(tester, find.widgetWithText(FilledButton, '保存'));
+          final payload =
+              jsonDecode(last('/${material.$3}/teacher-create').body) as Map;
+          expect(payload['programmingLanguage'], language);
+          expect(payload['teacherAccountIds'], [27]);
+          expect(payload['fileName'], 'lesson.${material.$2}');
+          expect(payload['classroomId'], isNull);
+          expect(find.byType(AlertDialog), findsNothing);
+          if (language != 'JAVA') {
+            await pickMaterial(tester, material.$2);
+            await tap(tester, find.text('閉じる'));
+          }
+        }
+        expect(
+          requests
+              .where((r) => r.url.path.endsWith('/infra/file/upload'))
+              .length,
+          3,
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+
+    testWidgets(
+      '${material.$1} edit keeps stored language instead of upload default',
+      (tester) async {
+        await mount(tester, 1280);
+        await selectType(tester, material.$1, 1280);
+        // All has Flutter as the upload default; the existing detail is PHP.
+        await tap(tester, find.byTooltip('詳細を取得して編集').first);
+        await expectMaterialLanguage(tester, 'PHP');
+        await tap(tester, find.text('閉じる'));
+        expect(requests.where((r) => r.method != 'GET'), isEmpty);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
   }
 
   for (final width in [1280.0, 390.0]) {

@@ -327,6 +327,7 @@ class _TeacherMaterialManagementState
         id: id,
         newFile: file,
         classrooms: widget.classrooms,
+        defaultLanguage: widget.languages.firstOrNull,
       ),
     );
     if (saved != true) return false;
@@ -464,11 +465,13 @@ class _TeacherMaterialEditor extends StatefulWidget {
     required this.classrooms,
     this.id,
     this.newFile,
+    this.defaultLanguage,
   });
   final _TeacherMaterialKind kind;
   final List<SchoolClassroom> classrooms;
   final int? id;
   final PlatformFile? newFile;
+  final String? defaultLanguage;
 
   @override
   State<_TeacherMaterialEditor> createState() => _TeacherMaterialEditorState();
@@ -503,6 +506,7 @@ class _TeacherMaterialEditorState extends State<_TeacherMaterialEditor> {
     if (widget.id == null) {
       _apply({
         'title': widget.newFile?.name ?? '',
+        'programmingLanguage': widget.defaultLanguage ?? '',
         'chapterNo': 1,
         'sort': 0,
         'durationSeconds': 0,

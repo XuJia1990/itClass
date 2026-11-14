@@ -43,8 +43,14 @@ void main() {
             {'id': 1, 'name': 'Java', 'programmingLanguage': 'Java'},
             {'id': 2, 'name': 'Python', 'programmingLanguage': 'Python'},
           ]);
-        case '/app-api/school/account/student/list-simple':
         case '/app-api/school/course-video/page':
+          return ok(
+            page([
+              {'id': 1, 'title': 'Java入門', 'programmingLanguage': 'Java'},
+              {'id': 2, 'title': 'Python入門', 'programmingLanguage': 'Python'},
+            ]),
+          );
+        case '/app-api/school/account/student/list-simple':
         case '/app-api/school/course-document/page':
         case '/app-api/school/practice-question/list':
         case '/app-api/school/code-scoring/assignment/list':

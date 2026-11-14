@@ -918,6 +918,169 @@ void main() {
       );
 
       testWidgets(
+        'exam filter only includes languages with exams, including legacy classroom languages',
+        (tester) async {
+          final fixture = _StudentApiFixture(
+            classrooms: const [
+              {'id': 1, 'name': 'JAVA教室', 'programmingLanguage': 'JAVA'},
+              {'id': 2, 'name': 'C教室', 'programmingLanguage': 'C'},
+            ],
+            videos: [
+              {..._videoJson, 'programmingLanguage': 'Flutter'},
+            ],
+            documents: [
+              {..._documentJson, 'programmingLanguage': 'PHP'},
+            ],
+            exams: [
+              {
+                ..._examJson,
+                'id': 41,
+                'title': 'JAVA確認試験',
+                'programmingLanguage': 'JAVA',
+              },
+              {
+                ..._examJson,
+                'id': 42,
+                'title': 'Ruby確認試験',
+                'programmingLanguage': 'Ruby',
+              },
+              {
+                ..._examJson,
+                'id': 43,
+                'title': 'JAVA旧試験',
+                'programmingLanguage': '',
+                'classroomId': 1,
+              },
+              {
+                ..._examJson,
+                'id': 44,
+                'title': '言語未設定の総合試験',
+                'programmingLanguage': '',
+                'classroomId': null,
+              },
+            ],
+          );
+          await _mountStudent(tester, fixture, viewport.size);
+          await _selectStudentSection(tester, 'テスト');
+          if (viewport.size.width < 720) {
+            await _tapAndSettle(tester, find.byTooltip('一覧・絞り込み'));
+          }
+          expect(_languageFilterOptions(tester), ['', 'JAVA', 'Ruby']);
+          expect(find.text('言語未設定の総合試験'), findsOneWidget);
+          await _tapAndSettle(
+            tester,
+            find.byType(DropdownButtonFormField<String>),
+          );
+          await _tapAndSettle(tester, find.text('JAVA').last);
+          expect(find.text('JAVA確認試験'), findsWidgets);
+          expect(find.text('JAVA旧試験'), findsOneWidget);
+          expect(find.text('Ruby確認試験'), findsNothing);
+          expect(find.text('言語未設定の総合試験'), findsNothing);
+          expect(
+            fixture.requests.where((r) => r.url.path.endsWith('/exam/start')),
+            isEmpty,
+          );
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+      );
+
+      testWidgets(
+        'exam filter stays empty when only courses and classrooms exist',
+        (tester) async {
+          final fixture = _StudentApiFixture(
+            classrooms: const [
+              {'id': 1, 'name': 'JAVA教室', 'programmingLanguage': 'JAVA'},
+            ],
+            exams: const [],
+          );
+          await _mountStudent(tester, fixture, viewport.size);
+          await _selectStudentSection(tester, 'テスト');
+          if (viewport.size.width < 720) {
+            await _tapAndSettle(tester, find.byTooltip('一覧・絞り込み'));
+          }
+          expect(_languageFilterOptions(tester), ['']);
+          expect(find.text('この言語のテストはありません。'), findsWidgets);
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+      );
+
+      testWidgets(
+        'teacher filter includes every published course and preserves a course with no teacher',
+        (tester) async {
+          final fixture = _StudentApiFixture(
+            classrooms: const [
+              {'id': 1, 'name': 'C教室', 'programmingLanguage': 'C'},
+            ],
+            videos: [
+              {..._videoJson, 'programmingLanguage': 'JAVA'},
+              {..._videoJson, 'id': 102, 'programmingLanguage': 'Flutter'},
+            ],
+            documents: [
+              {..._documentJson, 'programmingLanguage': 'PHP'},
+            ],
+            exams: [
+              {..._examJson, 'programmingLanguage': 'Ruby'},
+            ],
+            directoryTeachers: const [
+              {
+                'accountId': 27,
+                'realName': '老姜',
+                'status': 0,
+                'programmingLanguages': ['Flutter'],
+              },
+            ],
+          );
+          await _mountStudent(tester, fixture, viewport.size);
+          await _selectStudentSection(tester, '先生に質問');
+          expect(_languageFilterOptions(tester), [
+            '',
+            'Flutter',
+            'JAVA',
+            'PHP',
+          ]);
+          await _tapAndSettle(
+            tester,
+            find.byType(DropdownButtonFormField<String>),
+          );
+          await _tapAndSettle(tester, find.text('JAVA').last);
+          expect(find.text('JAVA の担当の先生はいません'), findsOneWidget);
+          expect(
+            find.byKey(const ValueKey('teacher-directory-27')),
+            findsNothing,
+          );
+          await _selectStudentSection(tester, 'AI教室');
+          await _selectStudentSection(tester, '先生に質問');
+          expect(
+            tester
+                .widget<DropdownButtonFormField<String>>(
+                  find.byType(DropdownButtonFormField<String>),
+                )
+                .initialValue,
+            'JAVA',
+          );
+          expect(find.text('JAVA の担当の先生はいません'), findsOneWidget);
+          expect(_languageFilterOptions(tester), [
+            '',
+            'Flutter',
+            'JAVA',
+            'PHP',
+          ]);
+          await _tapAndSettle(
+            tester,
+            find.byType(DropdownButtonFormField<String>),
+          );
+          await _tapAndSettle(tester, find.text('Flutter').last);
+          expect(
+            find.byKey(const ValueKey('teacher-directory-27')),
+            findsOneWidget,
+          );
+          expect(find.textContaining('の担当の先生はいません'), findsNothing);
+          expect(fixture.consultations, isEmpty);
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+      );
+
+      testWidgets(
         'course teachers appear without materials or chats and refresh on entry',
         (tester) async {
           final fixture = _StudentApiFixture(
@@ -981,7 +1144,12 @@ void main() {
       testWidgets(
         'teacher directory filters using course languages and can retry a failure',
         (tester) async {
-          final fixture = _StudentApiFixture()..failDirectory = true;
+          final fixture = _StudentApiFixture(
+            videos: [
+              {..._videoJson, 'programmingLanguage': 'JAVA'},
+              {..._videoJson, 'id': 102, 'programmingLanguage': 'Flutter'},
+            ],
+          )..failDirectory = true;
           await _mountStudent(tester, fixture, viewport.size);
           await _selectStudentSection(tester, '先生に質問');
           expect(find.text('先生一覧を再読み込み'), findsOneWidget);
@@ -1390,6 +1558,16 @@ void main() {
     });
   }
 }
+
+Iterable<String?> _languageFilterOptions(WidgetTester tester) => tester
+    .widget<DropdownButton<String>>(
+      find.descendant(
+        of: find.byType(DropdownButtonFormField<String>),
+        matching: find.byType(DropdownButton<String>),
+      ),
+    )
+    .items!
+    .map((item) => item.value);
 
 Future<void> _mountStudent(
   WidgetTester tester,

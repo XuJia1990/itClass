@@ -104,15 +104,22 @@ class _StudentHomePageState extends State<StudentHomePage> {
     );
   }
 
-  List<String> get _allLearningLanguages => _uniqueLanguages([
-    ..._resourceLanguages,
-    ..._apiExams.map((exam) => exam.programmingLanguage),
-    ..._availableClassrooms.map((room) => room.programmingLanguage),
-  ]);
+  String _examProgrammingLanguage(SchoolExamSummary exam) {
+    final language = exam.programmingLanguage.trim();
+    if (language.isNotEmpty) return language;
+    // Legacy exams may carry only the classroom ID.
+    for (final room in _availableClassrooms) {
+      if (room.id == exam.classroomId) return room.programmingLanguage.trim();
+    }
+    return '';
+  }
+
+  List<String> get _examLanguages =>
+      _uniqueLanguages(_apiExams.map(_examProgrammingLanguage));
 
   bool _examMatches(SchoolExamSummary exam) =>
       _examLanguage == null ||
-      exam.programmingLanguage.trim().toUpperCase() ==
+      _examProgrammingLanguage(exam).toUpperCase() ==
           _examLanguage!.toUpperCase();
 
   String _videoKey(LearningVideo video) =>
@@ -445,7 +452,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
           actionLabel: _examProgressLabel,
           children: [
             _LearningLanguageFilter(
-              languages: _allLearningLanguages,
+              languages: _examLanguages,
               value: _examLanguage,
               onChanged: _changeExamLanguage,
             ),
@@ -466,8 +473,10 @@ class _StudentHomePageState extends State<StudentHomePage> {
                   _CompactListCard(
                     selected: _selectedExamLesson == i,
                     title: _apiExams[i].title,
-                    subtitle:
-                        '${_apiExams[i].programmingLanguage} · ${_apiExams[i].ownerTeacherName}',
+                    subtitle: [
+                      _examProgrammingLanguage(_apiExams[i]),
+                      _apiExams[i].ownerTeacherName,
+                    ].where((part) => part.trim().isNotEmpty).join(' · '),
                     detail: _apiExams[i].latestScore == null
                         ? _examLimitsLabel(_apiExams[i])
                         : '最新 ${_apiExams[i].latestScore}点',
@@ -703,11 +712,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
         ),
         const SizedBox(height: 16),
         _LearningLanguageFilter(
-          languages: _uniqueLanguages(
-            _courseTeachers
-                .expand((teacher) => teacher.programmingLanguages)
-                .toList(),
-          ),
+          languages: _resourceLanguages,
           value: _teacherLanguage,
           onChanged: (value) => setState(() => _teacherLanguage = value),
         ),
@@ -746,8 +751,12 @@ class _StudentHomePageState extends State<StudentHomePage> {
             tone: _NoticeTone.warning,
             title: _teacherDirectoryLoading
                 ? '担当の先生を読み込み中です'
-                : '担当の先生がまだ登録されていません',
-            message: '学習コースに担当の先生が登録されると、ここから相談できます。',
+                : _teacherLanguage == null
+                ? '担当の先生がまだ登録されていません'
+                : '$_teacherLanguage の担当の先生はいません',
+            message: _teacherLanguage == null
+                ? '学習コースに担当の先生が登録されると、ここから相談できます。'
+                : 'このコースには現在相談できる先生がいません。ほかの学習言語を選んでください。',
           ),
         for (final entry in directory)
           KeyedSubtree(
@@ -1383,6 +1392,8 @@ class _StudentHomePageState extends State<StudentHomePage> {
           ? null
           : '一部のデータを読み込めませんでした。\n${errors.join('\n')}';
       final languages = _resourceLanguages;
+      if (!languages.contains(_teacherLanguage)) _teacherLanguage = null;
+      if (!_examLanguages.contains(_examLanguage)) _examLanguage = null;
       if (!_languageSelectionInitialized ||
           (_selectedLanguage != null &&
               !languages.contains(_selectedLanguage))) {
@@ -1655,12 +1666,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
         _courseTeachers = teachers
             .where((teacher) => teacher.accountId > 0 && teacher.status == 0)
             .toList();
-        final languages = _uniqueLanguages(
-          _courseTeachers
-              .expand((teacher) => teacher.programmingLanguages)
-              .toList(),
-        );
-        if (!languages.contains(_teacherLanguage)) _teacherLanguage = null;
         final selectedId = _selectedChatContact?.accountId;
         if (selectedId != null &&
             !_courseTeachers.any(

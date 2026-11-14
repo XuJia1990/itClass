@@ -257,8 +257,13 @@ class _TeacherMaterialManagement extends StatefulWidget {
       _TeacherMaterialManagementState();
 }
 
-class _TeacherMaterialManagementState
-    extends State<_TeacherMaterialManagement> {
+class _TeacherMaterialManagementState extends State<_TeacherMaterialManagement>
+    with _NavigationRefresh<_TeacherMaterialManagement> {
+  @override
+  Future<void> onNavigationRefresh() async {
+    await _load();
+  }
+
   final _search = TextEditingController();
   List<Map<String, dynamic>> _items = const [];
   int _page = 1;
@@ -271,7 +276,7 @@ class _TeacherMaterialManagementState
   @override
   void initState() {
     super.initState();
-    unawaited(_load());
+    unawaited(refreshFromNavigation());
   }
 
   @override
@@ -1071,7 +1076,14 @@ class _TeacherAssessmentManagement extends StatefulWidget {
 
 class _TeacherAssessmentManagementState
     extends State<_TeacherAssessmentManagement>
-    with AutomaticKeepAliveClientMixin {
+    with
+        AutomaticKeepAliveClientMixin,
+        _NavigationRefresh<_TeacherAssessmentManagement> {
+  @override
+  Future<void> onNavigationRefresh() async {
+    await _load();
+  }
+
   @override
   bool get wantKeepAlive => true;
   final _search = TextEditingController();
@@ -1087,7 +1099,7 @@ class _TeacherAssessmentManagementState
   @override
   void initState() {
     super.initState();
-    unawaited(_load());
+    unawaited(refreshFromNavigation());
   }
 
   @override

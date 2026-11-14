@@ -17,6 +17,7 @@ part 'pages/login_page.dart';
 part 'pages/student_home_page.dart';
 part 'pages/teacher_home_page.dart';
 part 'shared/widgets.dart';
+part 'shared/navigation_refresh.dart';
 part 'shared/models.dart';
 part 'shared/api.dart';
 part 'shared/session.dart';

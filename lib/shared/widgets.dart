@@ -2531,7 +2531,13 @@ class _TeacherChatWorkspace extends StatefulWidget {
   State<_TeacherChatWorkspace> createState() => _TeacherChatWorkspaceState();
 }
 
-class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
+class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace>
+    with _NavigationRefresh<_TeacherChatWorkspace> {
+  @override
+  Future<void> onNavigationRefresh() async {
+    await _loadConversation();
+  }
+
   final _controller = TextEditingController();
   final List<ChatMessage> _messages = [];
   StreamSubscription<ChatMessage>? _chatMessageSubscription;
@@ -2549,7 +2555,7 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
     _chatMessageSubscription = SchoolChatRealtime.instance.messages.listen(
       _handleRealtimeMessage,
     );
-    unawaited(_loadConversation());
+    unawaited(refreshFromNavigation());
   }
 
   @override
@@ -2824,7 +2830,13 @@ class _LearningUploadWorkspace extends StatefulWidget {
       _LearningUploadWorkspaceState();
 }
 
-class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
+class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace>
+    with _NavigationRefresh<_LearningUploadWorkspace> {
+  @override
+  Future<void> onNavigationRefresh() async {
+    if (widget.type == UploadMaterialType.test) await _loadAvailableLessons();
+  }
+
   String? _language;
   int _languageFilterRevision = 0;
   List<String> get _teachingLanguages => _uniqueLanguages(
@@ -2870,7 +2882,7 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
     super.initState();
     _syncTestDefaults();
     if (widget.type == UploadMaterialType.test) {
-      unawaited(_loadAvailableLessons());
+      unawaited(refreshFromNavigation());
     }
   }
 
@@ -4141,7 +4153,13 @@ class _ProfileSettingsWorkspace extends StatefulWidget {
       _ProfileSettingsWorkspaceState();
 }
 
-class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
+class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace>
+    with _NavigationRefresh<_ProfileSettingsWorkspace> {
+  @override
+  Future<void> onNavigationRefresh() async {
+    if (!_saving) await _loadProfile();
+  }
+
   late final TextEditingController _nameController;
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -4151,6 +4169,7 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
   late final TextEditingController _emailController;
   late final TextEditingController _basicInfoController;
   late String _savedName;
+  late String _savedNickname;
   late String _savedEmail;
   late String _savedPhone;
   late String _savedAvatar;
@@ -4170,12 +4189,13 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
     _savedName = widget.initialNickname.trim().isEmpty
         ? widget.initialRealName
         : widget.initialNickname;
+    _savedNickname = widget.initialNickname;
     _savedEmail = widget.initialEmail;
     _savedPhone = widget.initialPhone;
     _savedAvatar = widget.initialAvatar;
     _savedRealName = widget.initialRealName;
     _savedBasicInfo = widget.initialBasicInfo;
-    unawaited(_loadProfile());
+    unawaited(refreshFromNavigation());
   }
 
   @override
@@ -4383,7 +4403,7 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
     try {
       final profile = await ItClassApi.instance.getCurrentUser();
       if (!mounted) return;
-      _applyProfile(profile);
+      if (!_saving) _applyProfile(profile, preserveDrafts: true);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -4407,17 +4427,28 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace> {
     });
   }
 
-  void _applyProfile(MemberProfile profile) {
+  void _applyProfile(MemberProfile profile, {bool preserveDrafts = false}) {
     setState(() {
       _savedRealName = profile.realName;
-      _nameController.text = profile.nickname;
-      _emailController.text = profile.email;
-      _phoneController.text = profile.mobile;
-      _avatarController.text = profile.avatar;
-      _basicInfoController.text = profile.programmingLanguage;
+      if (!preserveDrafts || _nameController.text == _savedNickname) {
+        _nameController.text = profile.nickname;
+      }
+      if (!preserveDrafts || _emailController.text == _savedEmail) {
+        _emailController.text = profile.email;
+      }
+      if (!preserveDrafts || _phoneController.text == _savedPhone) {
+        _phoneController.text = profile.mobile;
+      }
+      if (!preserveDrafts || _avatarController.text == _savedAvatar) {
+        _avatarController.text = profile.avatar;
+      }
+      if (!preserveDrafts || _basicInfoController.text == _savedBasicInfo) {
+        _basicInfoController.text = profile.programmingLanguage;
+      }
       _savedName = profile.nickname.trim().isEmpty
           ? profile.realName
           : profile.nickname;
+      _savedNickname = profile.nickname;
       _savedEmail = profile.email;
       _savedPhone = profile.mobile;
       _savedAvatar = profile.avatar;

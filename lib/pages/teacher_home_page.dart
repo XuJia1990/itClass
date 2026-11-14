@@ -19,8 +19,11 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   List<SchoolClassroom> _classrooms = const [];
   List<StudentProfile> _studentsFromApi = const [];
   List<StudentProfile> _allStudentsFromApi = const [];
-  List<CodeReviewItem> _codeReviewsFromApi = const [];
+  int _gradingTotal = 0;
   bool _loading = false;
+  int _navigationRevision = 0;
+  final _navigationReads = _NavigationRefreshQueue();
+  late final Future<void> _initialLoad;
   bool _replySending = false;
   String? _apiError;
   StreamSubscription<ChatMessage>? _chatMessageSubscription;
@@ -34,8 +37,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
 
   List<StudentProfile> get _teacherStudents => _studentsFromApi;
 
-  List<CodeReviewItem> get _teacherCodeReviews => _codeReviewsFromApi;
-
   @override
   void initState() {
     super.initState();
@@ -44,13 +45,14 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     );
     _aiQuestionSubscription = SchoolChatRealtime.instance.aiQuestionChanges
         .listen((_) => unawaited(_reloadAiQuestions()));
-    unawaited(_loadTeacherData());
+    _initialLoad = _loadTeacherData();
   }
 
   @override
   void dispose() {
     unawaited(_chatMessageSubscription?.cancel());
     unawaited(_aiQuestionSubscription?.cancel());
+    _navigationReads.dispose();
     _replyInput.dispose();
     super.dispose();
   }
@@ -71,17 +73,24 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           TeacherSection.studentMessages.index,
       },
       onSelect: (index) {
-        setState(() => _section = TeacherSection.values[index]);
-        if (_section == TeacherSection.studentMessages) {
-          unawaited(_reloadChatStudents());
-        }
-        if (_section == TeacherSection.pendingAi) {
-          unawaited(_reloadAiQuestions());
-        }
+        final section = TeacherSection.values[index];
+        setState(() {
+          _section = section;
+          _navigationRevision++;
+        });
+        unawaited(
+          _navigationReads.run(section, () async {
+            await _initialLoad;
+            if (mounted) await _refreshSection(section);
+          }),
+        );
       },
       onLogout: _logout,
       middle: _teacherMiddlePanel(),
-      content: _teacherContent(),
+      content: _NavigationRefreshScope(
+        revision: _navigationRevision,
+        child: _teacherContent(),
+      ),
       topActions: const [],
     );
   }
@@ -164,9 +173,9 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
                 _CompactListCard(
                   selected: true,
                   title: '成績確認',
-                  subtitle: '${_teacherCodeReviews.length}件',
+                  subtitle: '$_gradingTotal件',
                   detail: '学生の提出履歴と採点状況を確認します。',
-                  onTap: () => unawaited(_loadTeacherData()),
+                  onTap: () => setState(() => _navigationRevision++),
                 ),
               ],
             ),
@@ -255,10 +264,13 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           onSubmit: () => unawaited(_answerRequest()),
         );
       case TeacherSection.codeScoring:
-        if (_loading && _codeReviewsFromApi.isEmpty) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        return const _TeacherGradingWorkspace();
+        return _TeacherGradingWorkspace(
+          onTotalChanged: (total) {
+            if (mounted && total != _gradingTotal) {
+              setState(() => _gradingTotal = total);
+            }
+          },
+        );
       case TeacherSection.studentMessages:
         if (_loading && _teacherStudents.isEmpty) {
           return const Center(child: CircularProgressIndicator());
@@ -446,6 +458,33 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     }
   }
 
+  Future<void> _refreshSection(TeacherSection section) async {
+    try {
+      switch (section) {
+        case TeacherSection.pendingAi:
+          await _reloadAiQuestions();
+        case TeacherSection.studentMessages:
+          await _reloadChatStudents();
+        case TeacherSection.relearning:
+          final classrooms = await ItClassApi.instance.myClassrooms();
+          if (mounted) setState(() => _classrooms = classrooms);
+        case TeacherSection.system:
+          final students = await ItClassApi.instance.simpleStudents();
+          if (mounted) setState(() => _allStudentsFromApi = students);
+        case TeacherSection.codeScoring:
+        case TeacherSection.settings:
+          // These workspaces refresh themselves through _NavigationRefreshScope.
+          break;
+      }
+    } catch (error) {
+      if (mounted && _section == section) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('更新できませんでした：${userFacingError(error)}')),
+        );
+      }
+    }
+  }
+
   Future<void> _loadTeacherData() async {
     if (_loading) return;
     setState(() {
@@ -486,7 +525,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
       load(
         '成績',
         ItClassApi.instance.examAttempts,
-        (value) => _codeReviewsFromApi = value.list,
+        (value) => _gradingTotal = value.total,
       ),
     ]);
     if (!mounted) return;

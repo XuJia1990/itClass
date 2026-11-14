@@ -55,6 +55,10 @@ class _StudentHomePageState extends State<StudentHomePage> {
   String? _examError;
   String? _chatError;
   bool _dataLoading = false;
+  int _dataLoads = 0;
+  int _navigationRevision = 0;
+  final _navigationReads = _NavigationRefreshQueue();
+  late final Future<void> _initialLoad;
   bool _chatLoading = false;
   bool _teacherSending = false;
   bool _aiSending = false;
@@ -217,12 +221,13 @@ class _StudentHomePageState extends State<StudentHomePage> {
     _chatMessageSubscription = SchoolChatRealtime.instance.messages.listen(
       _handleRealtimeChatMessage,
     );
-    unawaited(_loadStudentData());
+    _initialLoad = _loadStudentData();
   }
 
   @override
   void dispose() {
     unawaited(_chatMessageSubscription?.cancel());
+    _navigationReads.dispose();
     _aiInput.dispose();
     _teacherInput.dispose();
     _codeInput.dispose();
@@ -241,11 +246,16 @@ class _StudentHomePageState extends State<StudentHomePage> {
       items: _studentMenu,
       onSelect: (index) {
         final section = StudentSection.values[index];
-        setState(() => _section = section);
-        if (section == StudentSection.askTeacher) {
-          unawaited(_refreshTeacherDirectory());
-          unawaited(_refreshTeacherContacts());
-        }
+        setState(() {
+          _section = section;
+          _navigationRevision++;
+        });
+        unawaited(
+          _navigationReads.run(section, () async {
+            await _initialLoad;
+            if (mounted) await _loadStudentData(section: section);
+          }),
+        );
       },
       onLogout: _logout,
       middle: _studentMiddlePanel(context),
@@ -276,7 +286,12 @@ class _StudentHomePageState extends State<StudentHomePage> {
                 ],
               ),
             ),
-          Expanded(child: _studentContent(context)),
+          Expanded(
+            child: _NavigationRefreshScope(
+              revision: _navigationRevision,
+              child: _studentContent(context),
+            ),
+          ),
         ],
       ),
       topActions: const [],
@@ -1113,7 +1128,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
   void _sendAiMessage() {
     final text = _aiInput.text.trim();
     if (text.isEmpty || _aiSending || _aiLoading) return;
-    final requestId = _aiRequestId;
+    final requestId = ++_aiRequestId;
     setState(() {
       _aiSending = true;
       _aiMessages.add(ChatMessage.student(text));
@@ -1315,8 +1330,11 @@ class _StudentHomePageState extends State<StudentHomePage> {
     }
   }
 
-  Future<void> _loadStudentData() async {
-    if (_dataLoading) return;
+  Future<void> _loadStudentData({StudentSection? section}) async {
+    bool needs(StudentSection page) => section == null || section == page;
+    final resources =
+        needs(StudentSection.learning) || section == StudentSection.askTeacher;
+    _dataLoads++;
     setState(() {
       _apiError = null;
       _dataLoading = true;
@@ -1335,64 +1353,112 @@ class _StudentHomePageState extends State<StudentHomePage> {
       }
     }
 
-    // Public resources do not depend on classroom membership.
+    // Each menu refreshes its own data. Initial loading also supplies badges
+    // and language choices; selecting a menu never starts an exam or sends a chat.
     await Future.wait([
-      load(
-        '教室',
-        ItClassApi.instance.myClassrooms,
-        (value) => _availableClassrooms = value,
-      ),
-      load(
-        'AI会話',
-        () => ItClassApi.instance.aiConversations(),
-        (value) => _apiTopics = value.list,
-      ),
-      load('AI設定', ItClassApi.instance.aiTutorConfig, (config) {
-        _aiWelcomeMessage = config.welcomeMessage;
-        _aiAutoAnswerEnabled = config.autoAnswerEnabled;
-        if (_aiMessages.isEmpty && config.welcomeMessage.isNotEmpty) {
-          _aiMessages.add(ChatMessage.ai(config.welcomeMessage));
-        }
-      }),
-      load('動画', () => ItClassApi.instance.courseVideos(), (value) {
-        _apiVideos = value.list;
-        _selectedLesson = 0;
-        for (final video in value.list) {
-          _videoProgress[_videoKey(video)] = video.progress;
-        }
-      }),
-      load('教材', () => ItClassApi.instance.courseDocuments(), (value) {
-        _apiLessons = value.list;
-        _selectedLesson = 0;
-      }),
-      load('練習問題', () => ItClassApi.instance.practiceQuestions(), (value) {
-        _apiPracticeQuestions = value;
-        _selectedPracticeChapter = 0;
-      }),
-      load('テスト', ItClassApi.instance.examPage, (value) {
-        final selectedId = _apiExams.isEmpty
-            ? null
-            : _apiExams[_selectedExamLesson.clamp(0, _apiExams.length - 1)].id;
-        _apiExams = value.list;
-        final index = value.list.indexWhere((exam) => exam.id == selectedId);
-        _selectedExamLesson = index < 0 ? 0 : index;
-      }),
-      _refreshTeacherDirectory(),
-      _refreshTeacherContacts(),
-      load('コード課題', ItClassApi.instance.codeAssignments, (value) {
-        _apiCodeAssignments = value;
-        _selectedCodeAssignment = 0;
-        if (_codeInput.text.isEmpty && value.isNotEmpty) {
-          _codeInput.text = value.first.starterCode;
-        }
-      }),
+      if (section == null)
+        load(
+          '教室',
+          ItClassApi.instance.myClassrooms,
+          (value) => _availableClassrooms = value,
+        ),
+      if (needs(StudentSection.aiChat)) ...[
+        load(
+          'AI会話',
+          () => ItClassApi.instance.aiConversations(),
+          (value) => _apiTopics = value.list,
+        ),
+        load('AI設定', ItClassApi.instance.aiTutorConfig, (config) {
+          _aiWelcomeMessage = config.welcomeMessage;
+          _aiAutoAnswerEnabled = config.autoAnswerEnabled;
+          if (_aiMessages.isEmpty && config.welcomeMessage.isNotEmpty) {
+            _aiMessages.add(ChatMessage.ai(config.welcomeMessage));
+          }
+        }),
+        if (section != null) load('AI会話履歴', _refreshAiMessages, (_) {}),
+      ],
+      if (resources) ...[
+        load('動画', () => ItClassApi.instance.courseVideos(), (value) {
+          final selected = _videos.elementAtOrNull(_selectedLesson)?.id;
+          _apiVideos = value.list;
+          if (_learningMode == LearningMode.video) {
+            final index = _videos.indexWhere((video) => video.id == selected);
+            _selectedLesson = index < 0 ? 0 : index;
+          }
+          for (final video in value.list) {
+            _videoProgress[_videoKey(video)] = video.progress;
+          }
+        }),
+        load('教材', () => ItClassApi.instance.courseDocuments(), (value) {
+          final selected = _lessonsForLearning
+              .elementAtOrNull(_selectedLesson)
+              ?.id;
+          _apiLessons = value.list;
+          if (_learningMode == LearningMode.document) {
+            final index = _lessonsForLearning.indexWhere(
+              (lesson) => lesson.id == selected,
+            );
+            _selectedLesson = index < 0 ? 0 : index;
+          }
+        }),
+        load('練習問題', () => ItClassApi.instance.practiceQuestions(), (value) {
+          final selected = _practiceLessonGroups
+              .elementAtOrNull(_selectedPracticeChapter)
+              ?.title;
+          _apiPracticeQuestions = value;
+          final index = _practiceLessonGroups.indexWhere(
+            (group) => group.title == selected,
+          );
+          _selectedPracticeChapter = index < 0 ? 0 : index;
+        }),
+      ],
+      if (needs(StudentSection.exam)) ...[
+        load('テスト', ItClassApi.instance.examPage, (value) {
+          final selected = _apiExams.elementAtOrNull(_selectedExamLesson);
+          final exams = [...value.list];
+          // Keep the attempt already in progress even if its exam is unpublished.
+          if (_examAttemptId != null &&
+              !_examSubmitted &&
+              selected != null &&
+              !exams.any((exam) => exam.id == selected.id)) {
+            exams.add(selected);
+          }
+          _apiExams = exams;
+          final index = exams.indexWhere((exam) => exam.id == selected?.id);
+          _selectedExamLesson = index < 0 ? 0 : index;
+        }),
+        if (section != null && _examSubmitted)
+          load('成績', _refreshExamResult, (_) {}),
+      ],
+      if (needs(StudentSection.askTeacher)) ...[
+        _refreshTeacherDirectory(),
+        _refreshTeacherContacts(),
+        if (section != null) load('会話履歴', _refreshTeacherMessages, (_) {}),
+      ],
+      if (needs(StudentSection.codeScoring))
+        load('コード課題', ItClassApi.instance.codeAssignments, (value) {
+          final selected = _apiCodeAssignments
+              .elementAtOrNull(_selectedCodeAssignment)
+              ?.id;
+          _apiCodeAssignments = value;
+          final index = value.indexWhere(
+            (assignment) => assignment.id == selected,
+          );
+          _selectedCodeAssignment = index < 0 ? 0 : index;
+          if (_codeInput.text.isEmpty && value.isNotEmpty) {
+            _codeInput.text = value[_selectedCodeAssignment].starterCode;
+          }
+        }),
     ]);
+    _dataLoads--;
     if (!mounted) return;
     setState(() {
-      _dataLoading = false;
-      _apiError = errors.isEmpty
-          ? null
-          : '一部のデータを読み込めませんでした。\n${errors.join('\n')}';
+      _dataLoading = _dataLoads > 0;
+      if (section == null || section == _section) {
+        _apiError = errors.isEmpty
+            ? null
+            : '一部のデータを読み込めませんでした。\n${errors.join('\n')}';
+      }
       final languages = _resourceLanguages;
       if (!languages.contains(_teacherLanguage)) {
         _teacherLanguage = languages.firstOrNull;
@@ -1665,6 +1731,40 @@ class _StudentHomePageState extends State<StudentHomePage> {
         setState(() => _chatLoading = false);
       }
     }
+  }
+
+  Future<void> _refreshAiMessages() async {
+    final id = _aiConversationId;
+    final generation = _aiRequestId;
+    if (id == null || _aiSending || _aiLoading) return;
+    final messages = await ItClassApi.instance.aiConversationQuestions(id);
+    if (!mounted ||
+        id != _aiConversationId ||
+        generation != _aiRequestId ||
+        _aiSending) {
+      return;
+    }
+    setState(() {
+      _aiMessages
+        ..clear()
+        ..addAll(messages);
+    });
+  }
+
+  Future<void> _refreshTeacherMessages() async {
+    final id = _chatConversationId;
+    final generation = _chatRequestId;
+    if (id == null || _chatLoading) return;
+    final messages = await ItClassApi.instance.chatMessages(id);
+    if (!mounted || id != _chatConversationId || generation != _chatRequestId) {
+      return;
+    }
+    setState(() {
+      for (final message in messages) {
+        _upsertTeacherMessage(message);
+      }
+    });
+    _markLatestTeacherMessageRead(messages);
   }
 
   Future<void> _refreshTeacherDirectory() async {

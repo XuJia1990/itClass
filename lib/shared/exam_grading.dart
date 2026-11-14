@@ -50,13 +50,26 @@ String _attemptStatus(dynamic value) => switch (_asInt(value)) {
 };
 
 class _TeacherGradingWorkspace extends StatefulWidget {
-  const _TeacherGradingWorkspace();
+  const _TeacherGradingWorkspace({this.onTotalChanged});
+  final ValueChanged<int>? onTotalChanged;
   @override
   State<_TeacherGradingWorkspace> createState() =>
       _TeacherGradingWorkspaceState();
 }
 
-class _TeacherGradingWorkspaceState extends State<_TeacherGradingWorkspace> {
+class _TeacherGradingWorkspaceState extends State<_TeacherGradingWorkspace>
+    with _NavigationRefresh<_TeacherGradingWorkspace> {
+  @override
+  Future<void> onNavigationRefresh() async {
+    await _loadClassrooms();
+    if (!mounted) return;
+    final languages = _uniqueLanguages(
+      _classrooms.map((room) => room.programmingLanguage),
+    );
+    if (_language != null && !languages.contains(_language)) _language = null;
+    await _load();
+  }
+
   List<Map<String, dynamic>> _rows = [];
   List<SchoolClassroom> _classrooms = [];
   int _page = 1;
@@ -69,8 +82,7 @@ class _TeacherGradingWorkspaceState extends State<_TeacherGradingWorkspace> {
   @override
   void initState() {
     super.initState();
-    unawaited(_load());
-    unawaited(_loadClassrooms());
+    unawaited(refreshFromNavigation());
   }
 
   Future<void> _loadClassrooms() async {
@@ -100,6 +112,7 @@ class _TeacherGradingWorkspaceState extends State<_TeacherGradingWorkspace> {
           _rows = result.list;
           _total = result.total;
         });
+        widget.onTotalChanged?.call(result.total);
       }
     } catch (error) {
       if (mounted && generation == _generation) {
@@ -527,7 +540,13 @@ class _StudentExamHistoryWorkspace extends StatefulWidget {
 }
 
 class _StudentExamHistoryWorkspaceState
-    extends State<_StudentExamHistoryWorkspace> {
+    extends State<_StudentExamHistoryWorkspace>
+    with _NavigationRefresh<_StudentExamHistoryWorkspace> {
+  @override
+  Future<void> onNavigationRefresh() async {
+    await _load();
+  }
+
   List<Map<String, dynamic>> _rows = [];
   int _page = 1;
   int _total = 0;
@@ -536,7 +555,7 @@ class _StudentExamHistoryWorkspaceState
   @override
   void initState() {
     super.initState();
-    unawaited(_load());
+    unawaited(refreshFromNavigation());
   }
 
   Future<void> _load({int? page}) async {

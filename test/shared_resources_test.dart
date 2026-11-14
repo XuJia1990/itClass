@@ -1451,6 +1451,12 @@ void main() {
         expect(find.text('Pythonのリストを選んでください。'), findsOneWidget);
         expect(find.textContaining('残り '), findsNothing);
         expect(find.text('テストを提出'), findsOneWidget);
+        await _tapAndSettle(tester, find.text('A. [1, 2]'));
+        await _selectStudentSection(tester, 'テスト');
+        expect(
+          tester.widget<CheckboxListTile>(find.byType(CheckboxListTile).first).value,
+          isTrue,
+        );
         expect(
           fixture.requests.where(
             (request) => request.url.path.endsWith('/exam/start'),
@@ -1632,7 +1638,7 @@ Future<void> _selectStudentSection(WidgetTester tester, String label) async {
   if (tester.view.physicalSize.width / tester.view.devicePixelRatio < 980) {
     await _tapAndSettle(tester, find.byTooltip('Open navigation menu'));
   }
-  await _tapAndSettle(tester, find.text(label));
+  await _tapAndSettle(tester, find.text(label).first);
 }
 
 Future<void> _tapAndSettle(WidgetTester tester, Finder finder) async {

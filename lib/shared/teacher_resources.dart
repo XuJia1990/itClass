@@ -1394,7 +1394,7 @@ class _TeacherAssessmentEditorState extends State<_TeacherAssessmentEditor> {
         !_form.currentState!.validate()) {
       return;
     }
-    if (_teacherIds.isEmpty) {
+    if (!_exam && _teacherIds.isEmpty) {
       setState(() => _error = '担当講師を1名以上選択してください。');
       return;
     }
@@ -1406,7 +1406,11 @@ class _TeacherAssessmentEditorState extends State<_TeacherAssessmentEditor> {
           ? num.parse(entry.value.text.trim())
           : entry.value.text.trim();
     }
-    payload['teacherAccountIds'] = _teacherIds.toList();
+    if (_exam) {
+      payload.remove('teacherAccountIds');
+    } else {
+      payload['teacherAccountIds'] = _teacherIds.toList();
+    }
     if (!_exam) payload['status'] = _status;
     setState(() {
       _saving = true;
@@ -1575,12 +1579,16 @@ class _TeacherAssessmentEditorState extends State<_TeacherAssessmentEditor> {
                             ),
                         ],
                         const SizedBox(height: 16),
-                        _ResponsibleTeacherPicker(
-                          selectedIds: _teacherIds,
-                          existingTeachers: _teachers,
-                          enabled: !_saving && !_loading && !_conflict,
-                          onChanged: (ids) => setState(() => _teacherIds = ids),
-                        ),
+                        if (_exam)
+                          const Text('この学習言語を担当する有効な先生は、学生の成績を確認・採点できます。')
+                        else
+                          _ResponsibleTeacherPicker(
+                            selectedIds: _teacherIds,
+                            existingTeachers: _teachers,
+                            enabled: !_saving && !_loading && !_conflict,
+                            onChanged: (ids) =>
+                                setState(() => _teacherIds = ids),
+                          ),
                         if (!_exam)
                           DropdownButtonFormField<int>(
                             key: ValueKey('status-${_original!['version']}'),

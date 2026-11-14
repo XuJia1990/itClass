@@ -2856,7 +2856,6 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
     return index < 0 ? 0 : index;
   }
 
-  Set<int> _teacherIds = _currentResponsibleTeacherIds();
   bool _loadingLessons = false;
   bool _generatingQuestions = false;
   bool _savingTest = false;
@@ -2985,12 +2984,7 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    _ResponsibleTeacherPicker(
-                      selectedIds: _teacherIds,
-                      existingTeachers: _currentResponsibleTeachers(),
-                      enabled: !_savingTest,
-                      onChanged: (ids) => setState(() => _teacherIds = ids),
-                    ),
+                    const Text('この学習言語を担当する有効な先生は、学生の成績を確認・採点できます。'),
                   ],
                 ),
               ),
@@ -3159,10 +3153,6 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
       _notice('制限時間と受験回数は0以上の整数を入力してください。0は無制限です。');
       return;
     }
-    if (_teacherIds.isEmpty) {
-      _notice('担当講師を1名以上選択してください。');
-      return;
-    }
     if (title.isEmpty ||
         _draftQuestions.any(
           (question) =>
@@ -3188,7 +3178,6 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
       language,
       duration,
       attempts,
-      _teacherIds.toList()..sort(),
       for (final question in _draftQuestions)
         [
           question.topic,
@@ -3220,7 +3209,6 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
             score: 10,
           ),
           programmingLanguage: language,
-          teacherAccountIds: _teacherIds.toList(),
         );
         if (id <= 0) throw const ApiException('問題の保存結果を確認できませんでした。');
         _savedQuestionIds.add(id);
@@ -3230,7 +3218,6 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
         description: _testCategoryController.text.trim(),
         questionIds: _savedQuestionIds,
         programmingLanguage: language,
-        teacherAccountIds: _teacherIds.toList(),
         durationMinutes: duration,
       );
       if (_savedPaperId! <= 0) {
@@ -3244,7 +3231,6 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
         durationMinutes: duration,
         maxAttempts: attempts,
         passScore: _draftQuestions.length * 6,
-        teacherAccountIds: _teacherIds.toList(),
       );
       if (examId <= 0) throw const ApiException('試験の保存結果を確認できませんでした。');
       if (!mounted) return;

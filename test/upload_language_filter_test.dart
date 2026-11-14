@@ -442,6 +442,7 @@ void main() {
       await mount(tester, 1280);
       await selectType(tester, 'テストアップロード', 1280);
       expectUploadLanguage('Flutter');
+      expect(find.text('担当講師（1名以上・複数選択可）'), findsNothing);
       await reveal(tester, lessonPicker());
       expect(fieldValue(tester, 'テスト名'), 'Flutter講義資料1 テスト');
       expect(fieldValue(tester, '分類'), 'Flutter');
@@ -464,6 +465,9 @@ void main() {
       expect(exam['paperId'], 999);
       expect(exam['title'], 'Flutter講義資料2 テスト');
       expect(exam['description'], 'Flutter');
+      for (final payload in [question, paper, exam]) {
+        expect(payload.containsKey('teacherAccountIds'), isFalse);
+      }
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );

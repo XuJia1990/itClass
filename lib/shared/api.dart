@@ -662,6 +662,11 @@ class ItClassApi {
         query: {'courseVideoId': '$id'},
       );
 
+  Future<List<ResourceTeacher>> teacherDirectory() async {
+    final data = _asList(await _get('/school/teacher/list'));
+    return data.map((item) => ResourceTeacher.fromJson(_asMap(item))).toList();
+  }
+
   Future<List<ResourceTeacher>> resourceTeachers(
     String resourceType,
     int resourceId,

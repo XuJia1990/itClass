@@ -917,6 +917,104 @@ void main() {
         },
       );
 
+      testWidgets(
+        'course teachers appear without materials or chats and refresh on entry',
+        (tester) async {
+          final fixture = _StudentApiFixture(
+            videos: const [],
+            documents: const [],
+            exams: const [],
+            teachers: const [],
+            directoryTeachers: const [
+              {
+                'accountId': 27,
+                'accountNo': 'TWT2026008',
+                'realName': '老姜',
+                'status': 0,
+                'programmingLanguages': ['Flutter', 'JAVA'],
+              },
+              {
+                'accountId': 999,
+                'realName': '停止先生',
+                'status': 1,
+                'programmingLanguages': ['PHP'],
+              },
+            ],
+            history: [_conversationJson(999, 999, 'VIDEO', 101, '旧会話')],
+          );
+          await _mountStudent(tester, fixture, viewport.size);
+          await _selectStudentSection(tester, '先生に質問');
+          final card = find.byKey(const ValueKey('teacher-directory-27'));
+          expect(card, findsOneWidget);
+          expect(find.text('老姜'), findsOneWidget);
+          expect(find.text('担当言語：Flutter / JAVA'), findsOneWidget);
+          expect(
+            find.byKey(const ValueKey('teacher-directory-999')),
+            findsNothing,
+          );
+          expect(fixture.consultations, isEmpty);
+          final requestCount = fixture.requests
+              .where((r) => r.url.path.endsWith('/teacher/list'))
+              .length;
+          await tester.pump(const Duration(seconds: 30));
+          expect(
+            fixture.requests.where((r) => r.url.path.endsWith('/teacher/list')),
+            hasLength(requestCount),
+          );
+          await _tapAndSettle(tester, card);
+          expect(fixture.consultations, [
+            {'peerAccountId': 27},
+          ]);
+          expect(find.text('相談する資料を選択'), findsNothing);
+          fixture.directoryTeachers = const [];
+          await _selectStudentSection(tester, 'AI教室');
+          await _selectStudentSection(tester, '先生に質問');
+          expect(
+            find.byKey(const ValueKey('teacher-directory-27')),
+            findsNothing,
+          );
+          expect(find.text('担当の先生がまだ登録されていません'), findsOneWidget);
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+      );
+
+      testWidgets(
+        'teacher directory filters using course languages and can retry a failure',
+        (tester) async {
+          final fixture = _StudentApiFixture()..failDirectory = true;
+          await _mountStudent(tester, fixture, viewport.size);
+          await _selectStudentSection(tester, '先生に質問');
+          expect(find.text('先生一覧を再読み込み'), findsOneWidget);
+          expect(find.text('担当の先生がまだ登録されていません'), findsNothing);
+          fixture.failDirectory = false;
+          fixture.directoryTeachers = [
+            {
+              ..._directoryTeachersJson.first,
+              'programmingLanguages': ['JAVA'],
+            },
+            {
+              ..._directoryTeachersJson.last,
+              'programmingLanguages': ['Flutter'],
+            },
+          ];
+          await _tapAndSettle(tester, find.text('先生一覧を再読み込み'));
+          await _tapAndSettle(
+            tester,
+            find.byType(DropdownButtonFormField<String>),
+          );
+          await _tapAndSettle(tester, find.text('Flutter').last);
+          expect(
+            find.byKey(const ValueKey('teacher-directory-11')),
+            findsNothing,
+          );
+          expect(
+            find.byKey(const ValueKey('teacher-directory-12')),
+            findsOneWidget,
+          );
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+      );
+
       testWidgets('teacher directory opens a direct chat without choosing a resource', (
         tester,
       ) async {
@@ -997,7 +1095,7 @@ void main() {
           ),
           isEmpty,
           reason:
-              'The directory must use teachers already returned with resources.',
+              'The directory must use the independent course teacher list.',
         );
 
         final teacherB = find.byKey(const ValueKey('teacher-directory-12'));
@@ -1335,6 +1433,7 @@ class _StudentApiFixture {
   _StudentApiFixture({
     this.classrooms = const [],
     this.teachers = _teachersJson,
+    this.directoryTeachers = _directoryTeachersJson,
     this.videos = const [_videoJson],
     this.documents = const [_documentJson],
     this.exams = const [_examJson],
@@ -1356,6 +1455,8 @@ class _StudentApiFixture {
 
   final List<Map<String, Object?>> classrooms;
   final List<Map<String, Object?>> teachers;
+  List<Map<String, Object?>> directoryTeachers;
+  bool failDirectory = false;
   final List<Map<String, Object?>> videos;
   final List<Map<String, Object?>> documents;
   final List<Map<String, Object?>> exams;
@@ -1413,6 +1514,13 @@ class _StudentApiFixture {
           query: {'examId': '41'},
         );
         return _envelope(_attemptJson);
+      case '/app-api/school/teacher/list':
+        return failDirectory
+            ? http.Response(
+                jsonEncode({'code': 500, 'data': null, 'msg': '一時的なエラー'}),
+                200,
+              )
+            : _envelope(directoryTeachers);
       case '/app-api/school/resource/teachers':
         final type = request.url.queryParameters['resourceType']!;
         final id = int.parse(request.url.queryParameters['resourceId']!);
@@ -1593,6 +1701,23 @@ void _expectTeachers(List<ResourceTeacher> teachers) {
   expect(teachers.map((teacher) => teacher.status), [0, 0]);
   expect(teachers.map((teacher) => teacher.avatar), ['', '']);
 }
+
+const _directoryTeachersJson = [
+  {
+    'accountId': 11,
+    'accountNo': 'TWT2026001',
+    'realName': 'A先生',
+    'status': 0,
+    'programmingLanguages': ['Python', 'TypeScript'],
+  },
+  {
+    'accountId': 12,
+    'accountNo': 'TWT2026002',
+    'realName': 'B先生',
+    'status': 0,
+    'programmingLanguages': ['Python', 'TypeScript'],
+  },
+];
 
 const _teachersJson = [
   {

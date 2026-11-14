@@ -26,6 +26,9 @@ class _StudentHomePageState extends State<StudentHomePage> {
   bool _showExamHistory = false;
   List<ExamQuestion> _apiExamQuestions = const [];
   List<StudentProfile> _chatContacts = const [];
+  List<ResourceTeacher> _courseTeachers = const [];
+  bool _teacherDirectoryLoading = false;
+  String? _teacherDirectoryError;
   List<CodeAssignment> _apiCodeAssignments = const [];
   String? _selectedLanguage;
   bool _languageSelectionInitialized = false;
@@ -157,55 +160,13 @@ class _StudentHomePageState extends State<StudentHomePage> {
 
   List<_StudentTeacherDirectoryEntry> get _teacherDirectory {
     final entries = <String, _StudentTeacherDirectoryEntry>{};
-    void addResource(
-      String type,
-      int? id,
-      String title,
-      String language,
-      List<ResourceTeacher> teachers,
-    ) {
-      if (id == null || id <= 0) return;
-      final resource = _StudentConsultationResource(type, id, title, language);
-      for (final teacher in teachers) {
-        if (teacher.accountId <= 0 || teacher.status != 0) continue;
-        final key = '${teacher.accountId}';
-        final entry = entries.putIfAbsent(
-          key,
-          () => _StudentTeacherDirectoryEntry(key, teacher: teacher),
-        );
-        entry.resources[resource.key] = resource;
-      }
-    }
-
-    // Use the complete public resource responses, never the learning filter.
-    for (final video in _apiVideos) {
-      addResource(
-        'VIDEO',
-        video.id,
-        video.title,
-        video.category,
-        video.teachers,
+    for (final teacher in _courseTeachers) {
+      if (teacher.accountId <= 0 || teacher.status != 0) continue;
+      final key = '${teacher.accountId}';
+      entries.putIfAbsent(
+        key,
+        () => _StudentTeacherDirectoryEntry(key, teacher: teacher),
       );
-    }
-    for (final lesson in _apiLessons) {
-      addResource(
-        'DOCUMENT',
-        lesson.id,
-        lesson.title,
-        lesson.level,
-        lesson.teachers,
-      );
-    }
-    for (final exam in _apiExams) {
-      if (exam.isAvailable) {
-        addResource(
-          'EXAM',
-          exam.id,
-          exam.title,
-          exam.programmingLanguage,
-          exam.teachers,
-        );
-      }
     }
     final seenConversations = <int>{};
     for (final contact in _teacherContacts) {
@@ -214,14 +175,9 @@ class _StudentHomePageState extends State<StudentHomePage> {
         continue;
       }
       final accountId = contact.accountId;
-      final key = accountId != null && accountId > 0
-          ? '$accountId'
-          : 'history-${conversationId ?? '${contact.classroomId}:${contact.accountNo}'}';
-      final entry = entries.putIfAbsent(
-        key,
-        () => _StudentTeacherDirectoryEntry(key),
-      );
-      // Former teachers remain reachable for their original private histories.
+      final entry = entries['$accountId'];
+      // History enriches eligible course teachers; it does not grant eligibility.
+      if (entry == null) continue;
       entry.conversations.add(contact);
     }
     for (final entry in entries.values) {
@@ -280,6 +236,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
         final section = StudentSection.values[index];
         setState(() => _section = section);
         if (section == StudentSection.askTeacher) {
+          unawaited(_refreshTeacherDirectory());
           unawaited(_refreshTeacherContacts());
         }
       },
@@ -728,9 +685,9 @@ class _StudentHomePageState extends State<StudentHomePage> {
         .where(
           (entry) =>
               _teacherLanguage == null ||
-              entry.resources.values.any(
-                (resource) =>
-                    resource.language.trim().toUpperCase() ==
+              entry.teacher.programmingLanguages.any(
+                (language) =>
+                    language.trim().toUpperCase() ==
                     _teacherLanguage!.toUpperCase(),
               ),
         )
@@ -745,11 +702,28 @@ class _StudentHomePageState extends State<StudentHomePage> {
           subtitle: 'すべての学習言語の担当の先生です。先生を選んで相談できます。',
         ),
         _LearningLanguageFilter(
-          languages: _allLearningLanguages,
+          languages: _uniqueLanguages(
+            _courseTeachers
+                .expand((teacher) => teacher.programmingLanguages)
+                .toList(),
+          ),
           value: _teacherLanguage,
           onChanged: (value) => setState(() => _teacherLanguage = value),
         ),
-        if (_directoryCreating) const LinearProgressIndicator(),
+        if (_teacherDirectoryLoading || _directoryCreating)
+          const LinearProgressIndicator(),
+        if (_teacherDirectoryError != null) ...[
+          Text(
+            _teacherDirectoryError!,
+            style: const TextStyle(color: _AppPalette.coral),
+          ),
+          TextButton(
+            onPressed: _teacherDirectoryLoading
+                ? null
+                : _refreshTeacherDirectory,
+            child: const Text('先生一覧を再読み込み'),
+          ),
+        ],
         if (_directoryError != null)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
@@ -766,11 +740,13 @@ class _StudentHomePageState extends State<StudentHomePage> {
           ),
         ],
         const SizedBox(height: 16),
-        if (directory.isEmpty)
+        if (directory.isEmpty && _teacherDirectoryError == null)
           _InlineNotice(
             tone: _NoticeTone.warning,
-            title: _dataLoading ? '担当の先生を読み込み中です' : '担当の先生がまだ登録されていません',
-            message: '公開教材に担当の先生が登録されると、ここから相談できます。',
+            title: _teacherDirectoryLoading
+                ? '担当の先生を読み込み中です'
+                : '担当の先生がまだ登録されていません',
+            message: '学習コースに担当の先生が登録されると、ここから相談できます。',
           ),
         for (final entry in directory)
           KeyedSubtree(
@@ -789,7 +765,9 @@ class _StudentHomePageState extends State<StudentHomePage> {
               badge: entry.unreadCount > 0 ? '${entry.unreadCount}件未読' : null,
               showNotificationDot: entry.unreadCount > 0,
               onTap: () {
-                if (_dataLoading || _directoryConsultationBusy) return;
+                if (_teacherDirectoryLoading || _directoryConsultationBusy) {
+                  return;
+                }
                 unawaited(_consultDirectoryTeacher(entry));
               },
             ),
@@ -951,7 +929,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
       return;
     }
     final teacher = entry.teacher;
-    if (teacher == null) return;
     setState(() {
       _directoryConsultationBusy = true;
       _directoryCreating = true;
@@ -1388,6 +1365,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
         final index = value.list.indexWhere((exam) => exam.id == selectedId);
         _selectedExamLesson = index < 0 ? 0 : index;
       }),
+      _refreshTeacherDirectory(),
       _refreshTeacherContacts(),
       load('コード課題', ItClassApi.instance.codeAssignments, (value) {
         _apiCodeAssignments = value;
@@ -1663,6 +1641,50 @@ class _StudentHomePageState extends State<StudentHomePage> {
     }
   }
 
+  Future<void> _refreshTeacherDirectory() async {
+    if (_teacherDirectoryLoading) return;
+    setState(() {
+      _teacherDirectoryLoading = true;
+      _teacherDirectoryError = null;
+    });
+    try {
+      final teachers = await ItClassApi.instance.teacherDirectory();
+      if (!mounted) return;
+      setState(() {
+        _courseTeachers = teachers
+            .where((teacher) => teacher.accountId > 0 && teacher.status == 0)
+            .toList();
+        final languages = _uniqueLanguages(
+          _courseTeachers
+              .expand((teacher) => teacher.programmingLanguages)
+              .toList(),
+        );
+        if (!languages.contains(_teacherLanguage)) _teacherLanguage = null;
+        final selectedId = _selectedChatContact?.accountId;
+        if (selectedId != null &&
+            !_courseTeachers.any(
+              (teacher) => teacher.accountId == selectedId,
+            )) {
+          _chatRequestId++;
+          _selectedChatContact = null;
+          _chatConversationId = null;
+          _teacherMessages.clear();
+          _showTeacherDirectory = true;
+          _directoryTeacherKey = null;
+        }
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => _teacherDirectoryError =
+              '先生一覧を読み込めませんでした：${userFacingError(error)}',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _teacherDirectoryLoading = false);
+    }
+  }
+
   Future<void> _refreshTeacherContacts() async {
     final requestId = ++_contactsRequestId;
     try {
@@ -1778,63 +1800,17 @@ class _PracticeLessonGroup {
   final List<SchoolPracticeQuestion> questions;
 }
 
-class _StudentConsultationResource {
-  const _StudentConsultationResource(
-    this.type,
-    this.id,
-    this.title,
-    this.language,
-  );
-
-  final String type;
-  final int id;
-  final String title;
-  final String language;
-
-  String get key => '$type:$id';
-  String get label {
-    final kind = switch (type) {
-      'VIDEO' => '動画',
-      'DOCUMENT' => '教材',
-      'EXAM' => 'テスト',
-      _ => '資料',
-    };
-    return '$kind · ${language.trim().isEmpty ? '言語未設定' : language.trim()}';
-  }
-}
-
 class _StudentTeacherDirectoryEntry {
-  _StudentTeacherDirectoryEntry(this.key, {this.teacher});
+  _StudentTeacherDirectoryEntry(this.key, {required this.teacher});
 
   final String key;
-  final ResourceTeacher? teacher;
-  final Map<String, _StudentConsultationResource> resources = {};
+  final ResourceTeacher teacher;
   final List<StudentProfile> conversations = [];
 
-  String get name {
-    if (teacher != null) return _resourceTeacherName(teacher!);
-    if (conversations.isEmpty) return '過去の会話';
-    final contact = conversations.first;
-    return contact.name.trim().isNotEmpty
-        ? contact.name
-        : contact.accountNo?.trim().isNotEmpty == true
-        ? contact.accountNo!
-        : '過去の会話';
-  }
+  String get name => _resourceTeacherName(teacher);
 
   String get languageLabel {
-    if (resources.isEmpty) return '過去の会話（現在の担当資料なし）';
-    final names = <String, String>{};
-    for (final resource in resources.values) {
-      final language = resource.language.trim();
-      if (language.isNotEmpty) {
-        names.putIfAbsent(language.toUpperCase(), () => language);
-      }
-    }
-    final languages = names.values.toList()
-      ..sort(
-        (left, right) => left.toUpperCase().compareTo(right.toUpperCase()),
-      );
+    final languages = _uniqueLanguages(teacher.programmingLanguages);
     return '担当言語：${languages.isEmpty ? '言語未設定' : languages.join(' / ')}';
   }
 

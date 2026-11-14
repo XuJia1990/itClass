@@ -60,6 +60,21 @@ void main() {
             'welcomeMessage': 'プログラミングの質問',
             'autoAnswerEnabled': true,
           });
+        case '/app-api/school/teacher/list':
+          return ok([
+            {
+              'accountId': 11,
+              'realName': '田中先生',
+              'status': 0,
+              'programmingLanguages': ['Java'],
+            },
+            {
+              'accountId': 12,
+              'realName': '山田先生',
+              'status': 0,
+              'programmingLanguages': ['Python'],
+            },
+          ]);
         case '/app-api/school/exam/page':
           return ok(
             page([
@@ -178,10 +193,10 @@ void main() {
         addTearDown(tester.view.resetDevicePixelRatio);
         await tester.pumpWidget(const MaterialApp(home: TeacherHomePage()));
         await tester.pumpAndSettle();
-      if (width < 980) {
-        tester.state<ScaffoldState>(find.byType(Scaffold).first).openDrawer();
-        await tester.pumpAndSettle();
-      }
+        if (width < 980) {
+          tester.state<ScaffoldState>(find.byType(Scaffold).first).openDrawer();
+          await tester.pumpAndSettle();
+        }
         final menu = find.text('成績確認').first;
         await tester.ensureVisible(menu);
         await tester.tap(menu);

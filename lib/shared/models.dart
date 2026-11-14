@@ -56,6 +56,7 @@ class ResourceTeacher {
     this.accountNo = '',
     this.avatar = '',
     this.status = 0,
+    this.programmingLanguages = const [],
   });
   factory ResourceTeacher.fromJson(Map<String, dynamic> json) =>
       ResourceTeacher(
@@ -64,7 +65,12 @@ class ResourceTeacher {
         accountNo: _asString(json['accountNo']),
         avatar: _asString(json['avatar']),
         status: _asInt(json['status']) ?? 0,
+        programmingLanguages: _asList(json['programmingLanguages'])
+            .map((value) => _asString(value).trim())
+            .where((value) => value.isNotEmpty)
+            .toList(),
       );
+  final List<String> programmingLanguages;
   final int accountId;
   final String realName;
   final String accountNo;

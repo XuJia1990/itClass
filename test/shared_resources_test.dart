@@ -1045,6 +1045,17 @@ void main() {
         await _tapAndSettle(tester, find.text('Python').last);
         await _selectStudentSection(tester, '先生に質問');
 
+        final directorySubtitle = find.text('すべての学習言語の担当の先生です。先生を選んで相談できます。');
+        final languageFilter = find.byType(DropdownButtonFormField<String>);
+        expect(directorySubtitle, findsOneWidget);
+        expect(languageFilter, findsOneWidget);
+        expect(
+          tester.getTopLeft(languageFilter).dy -
+              tester.getBottomLeft(directorySubtitle).dy,
+          greaterThanOrEqualTo(16),
+          reason: '窄い画面で副題が折り返しても絞り込み欄と重ならない。',
+        );
+
         for (final teacher in [(id: 11, name: 'A先生'), (id: 12, name: 'B先生')]) {
           final card = find.byKey(ValueKey('teacher-directory-${teacher.id}'));
           expect(

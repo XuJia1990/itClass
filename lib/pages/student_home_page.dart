@@ -701,6 +701,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
           title: '先生一覧',
           subtitle: 'すべての学習言語の担当の先生です。先生を選んで相談できます。',
         ),
+        const SizedBox(height: 16),
         _LearningLanguageFilter(
           languages: _uniqueLanguages(
             _courseTeachers

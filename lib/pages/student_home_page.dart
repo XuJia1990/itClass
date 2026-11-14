@@ -92,7 +92,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
       ..._apiVideos.map((video) => video.category),
       ..._apiLessons.map((lesson) => lesson.level),
       ..._apiPracticeQuestions.map((question) => question.programmingLanguage),
-      ..._apiExams.map((exam) => exam.programmingLanguage),
     ]) {
       final name = language.trim();
       if (name.isNotEmpty) labels.putIfAbsent(name.toUpperCase(), () => name);
@@ -104,6 +103,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
 
   List<String> get _allLearningLanguages => _uniqueLanguages([
     ..._resourceLanguages,
+    ..._apiExams.map((exam) => exam.programmingLanguage),
     ..._availableClassrooms.map((room) => room.programmingLanguage),
   ]);
 
@@ -319,31 +319,42 @@ class _StudentHomePageState extends State<StudentHomePage> {
     );
   }
 
-  Widget _languageSelector() => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      const Text(
-        '学習言語',
-        style: TextStyle(color: _AppPalette.muted, fontWeight: FontWeight.w700),
-      ),
-      const SizedBox(height: 8),
-      DropdownButtonFormField<String>(
-        key: ValueKey('language-$_selectedLanguage'),
-        initialValue: _allLearningLanguages.contains(_selectedLanguage)
-            ? _selectedLanguage
-            : '',
-        isExpanded: true,
-        decoration: const InputDecoration(prefixIcon: Icon(Icons.code_rounded)),
-        items: [
-          const DropdownMenuItem(value: '', child: Text('すべての言語')),
-          for (final language in _allLearningLanguages)
-            DropdownMenuItem(value: language, child: Text(language)),
-        ],
-        onChanged: (value) =>
-            _changeResourceLanguage(value == '' ? null : value),
-      ),
-    ],
-  );
+  Widget _languageSelector() {
+    // Classroom categories may exist before any course is published.
+    final languages = _resourceLanguages;
+    final selected = languages.contains(_selectedLanguage)
+        ? _selectedLanguage
+        : languages.firstOrNull;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          '学習言語',
+          style: TextStyle(
+            color: _AppPalette.muted,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          key: ValueKey('language-$selected'),
+          initialValue: selected,
+          isExpanded: true,
+          decoration: const InputDecoration(
+            prefixIcon: Icon(Icons.code_rounded),
+          ),
+          hint: Text(_dataLoading ? '読み込み中…' : '公開中のコースはありません'),
+          items: [
+            for (final language in languages)
+              DropdownMenuItem(value: language, child: Text(language)),
+          ],
+          onChanged: _dataLoading || languages.isEmpty
+              ? null
+              : _changeResourceLanguage,
+        ),
+      ],
+    );
+  }
 
   Widget _learningModeSelector() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -808,6 +808,115 @@ void main() {
     (name: '390px mobile', size: const Size(390, 844)),
   ]) {
     group('student without a classroom on ${viewport.name}', () {
+      testWidgets(
+        'course choices exclude empty classrooms and exam-only languages',
+        (tester) async {
+          final fixture = _StudentApiFixture(
+            classrooms: [
+              for (final language in ['C', 'DART', 'Flutter', 'JAVA', 'PHP'])
+                {
+                  'id': language.hashCode.abs(),
+                  'name': language,
+                  'programmingLanguage': language,
+                },
+            ],
+            videos: [
+              {
+                ..._videoJson,
+                'id': 101,
+                'title': 'JAVA入門動画',
+                'programmingLanguage': 'JAVA',
+              },
+              {
+                ..._videoJson,
+                'id': 102,
+                'title': 'Flutter入門動画',
+                'programmingLanguage': 'Flutter',
+              },
+            ],
+            documents: [
+              {
+                ..._documentJson,
+                'id': 201,
+                'title': 'PHP講義資料',
+                'programmingLanguage': 'PHP',
+              },
+              {
+                ..._documentJson,
+                'id': 202,
+                'title': 'JAVA講義資料',
+                'programmingLanguage': 'java',
+              },
+            ],
+            exams: [
+              {..._examJson, 'programmingLanguage': 'Ruby'},
+            ],
+          );
+          await _mountStudent(tester, fixture, viewport.size);
+          await _selectStudentSection(tester, 'AI教室');
+          final selector = find.byType(DropdownButtonFormField<String>);
+          final field = tester.widget<DropdownButtonFormField<String>>(
+            selector,
+          );
+          final dropdown = tester.widget<DropdownButton<String>>(
+            find.descendant(
+              of: selector,
+              matching: find.byType(DropdownButton<String>),
+            ),
+          );
+          expect(dropdown.items!.map((item) => item.value), [
+            'Flutter',
+            'JAVA',
+            'PHP',
+          ]);
+          expect(field.initialValue, 'Flutter');
+          expect(find.text('Flutter入門動画'), findsWidgets);
+          expect(find.text('JAVA入門動画'), findsNothing);
+
+          await _tapAndSettle(tester, selector);
+          expect(find.text('すべての言語'), findsNothing);
+          expect(find.text('DART'), findsNothing);
+          expect(find.text('Ruby'), findsNothing);
+          await _tapAndSettle(tester, find.text('JAVA').last);
+          expect(find.text('JAVA入門動画'), findsWidgets);
+          expect(find.text('Flutter入門動画'), findsNothing);
+
+          await _tapAndSettle(
+            tester,
+            find.byType(DropdownButtonFormField<LearningMode>),
+          );
+          await _tapAndSettle(tester, find.text('文書学習').last);
+          await _tapAndSettle(tester, selector);
+          await _tapAndSettle(tester, find.text('PHP').last);
+          expect(find.text('PHP講義資料'), findsWidgets);
+          expect(find.text('JAVA講義資料'), findsNothing);
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+      );
+
+      testWidgets(
+        'empty course catalog does not fall back to classroom categories',
+        (tester) async {
+          final fixture = _StudentApiFixture(
+            classrooms: const [
+              {'id': 1, 'name': 'C教室', 'programmingLanguage': 'C'},
+            ],
+            videos: const [],
+            documents: const [],
+            exams: const [_examJson],
+          );
+          await _mountStudent(tester, fixture, viewport.size);
+          await _selectStudentSection(tester, 'AI教室');
+          final field = tester.widget<DropdownButtonFormField<String>>(
+            find.byType(DropdownButtonFormField<String>),
+          );
+          expect(field.initialValue, isNull);
+          expect(field.onChanged, isNull);
+          expect(find.text('公開中のコースはありません'), findsWidgets);
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+      );
+
       testWidgets('teacher directory opens a direct chat without choosing a resource', (
         tester,
       ) async {
@@ -1224,6 +1333,7 @@ const _globalWelcome = '全言語で質問できます（モック設定）';
 
 class _StudentApiFixture {
   _StudentApiFixture({
+    this.classrooms = const [],
     this.teachers = _teachersJson,
     this.videos = const [_videoJson],
     this.documents = const [_documentJson],
@@ -1244,6 +1354,7 @@ class _StudentApiFixture {
     );
   }
 
+  final List<Map<String, Object?>> classrooms;
   final List<Map<String, Object?>> teachers;
   final List<Map<String, Object?>> videos;
   final List<Map<String, Object?>> documents;
@@ -1272,6 +1383,8 @@ class _StudentApiFixture {
     switch (request.url.path) {
       case '/app-api/school/classroom/my-list':
       case '/app-api/school/classroom/available-list':
+        expect(request.method, 'GET');
+        return _envelope(classrooms);
       case '/app-api/school/practice-question/list':
       case '/app-api/school/code-scoring/assignment/list':
         expect(request.method, 'GET');

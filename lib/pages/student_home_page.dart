@@ -452,6 +452,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
           actionLabel: _examProgressLabel,
           children: [
             _LearningLanguageFilter(
+              includeAll: false,
               languages: _examLanguages,
               value: _examLanguage,
               onChanged: _changeExamLanguage,
@@ -712,6 +713,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
         ),
         const SizedBox(height: 16),
         _LearningLanguageFilter(
+          includeAll: false,
           languages: _resourceLanguages,
           value: _teacherLanguage,
           onChanged: (value) => setState(() => _teacherLanguage = value),
@@ -1392,8 +1394,20 @@ class _StudentHomePageState extends State<StudentHomePage> {
           ? null
           : '一部のデータを読み込めませんでした。\n${errors.join('\n')}';
       final languages = _resourceLanguages;
-      if (!languages.contains(_teacherLanguage)) _teacherLanguage = null;
-      if (!_examLanguages.contains(_examLanguage)) _examLanguage = null;
+      if (!languages.contains(_teacherLanguage)) {
+        _teacherLanguage = languages.firstOrNull;
+      }
+      final examLanguages = _examLanguages;
+      if (!examLanguages.contains(_examLanguage)) {
+        _examLanguage = examLanguages.firstOrNull;
+      }
+      if (_examAttemptId == null || _examSubmitted) {
+        final selected = _apiExams.elementAtOrNull(_selectedExamLesson);
+        if (selected == null || !_examMatches(selected)) {
+          final index = _apiExams.indexWhere(_examMatches);
+          _selectedExamLesson = index < 0 ? 0 : index;
+        }
+      }
       if (!_languageSelectionInitialized ||
           (_selectedLanguage != null &&
               !languages.contains(_selectedLanguage))) {

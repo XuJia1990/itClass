@@ -38,6 +38,9 @@ void main() {
       requests.add(request);
       switch (request.url.path) {
         case '/app-api/school/classroom/my-list':
+          return ok([
+            {'id': 1, 'name': 'Java', 'programmingLanguage': 'Java'},
+          ]);
         case '/app-api/school/classroom/available-list':
           return ok([
             {'id': 1, 'name': 'Java', 'programmingLanguage': 'Java'},
@@ -207,6 +210,40 @@ void main() {
         await tester.ensureVisible(menu);
         await tester.tap(menu);
         await tester.pumpAndSettle();
+        final languages = tester.widget<DropdownButtonFormField<String>>(
+          find.byType(DropdownButtonFormField<String>),
+        );
+        expect(languages.initialValue, '');
+        expect(tester.widget<DropdownButton<String>>(find.byType(DropdownButton<String>)).items!.map((item) => item.value), ['', 'Java']);
+        final statuses = tester.widget<DropdownButtonFormField<int>>(
+          find.byType(DropdownButtonFormField<int>),
+        );
+        expect(statuses.initialValue, -1);
+        final initialRequest = requests.lastWhere(
+          (request) => request.url.path.endsWith('/exam-teacher/attempt/page'),
+        );
+        expect(
+          initialRequest.url.queryParameters.containsKey('status'),
+          isFalse,
+        );
+        expect(
+          initialRequest.url.queryParameters.containsKey('programmingLanguage'),
+          isFalse,
+        );
+        await tester.tap(find.byType(DropdownButtonFormField<String>));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Java').last);
+        await tester.pumpAndSettle();
+        expect(
+          requests
+              .lastWhere(
+                (request) =>
+                    request.url.path.endsWith('/exam-teacher/attempt/page'),
+              )
+              .url
+              .queryParameters['programmingLanguage'],
+          'Java',
+        );
         final edit = find.byTooltip('採点する');
         await tester.ensureVisible(edit);
         await tester.tap(edit);
@@ -263,7 +300,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('テスト').first);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('すべて').first);
+      expect(find.text('すべて'), findsNothing);
+      await tester.tap(find.byType(DropdownButtonFormField<String>));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Python').last);
       await tester.pumpAndSettle();
@@ -271,7 +309,8 @@ void main() {
       expect(find.text('Python検定'), findsOneWidget);
       await tester.tap(find.text('先生に質問').first);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('すべて').first);
+      expect(find.text('すべて'), findsNothing);
+      await tester.tap(find.byType(DropdownButtonFormField<String>));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Python').last);
       await tester.pumpAndSettle();
@@ -281,7 +320,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Python').first);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('すべて').last);
+      await tester.tap(find.text('Java').last);
       await tester.pumpAndSettle();
       await tester.tap(find.text('成績履歴').first);
       await tester.pumpAndSettle();

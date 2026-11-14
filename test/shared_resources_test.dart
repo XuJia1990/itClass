@@ -965,8 +965,17 @@ void main() {
           if (viewport.size.width < 720) {
             await _tapAndSettle(tester, find.byTooltip('一覧・絞り込み'));
           }
-          expect(_languageFilterOptions(tester), ['', 'JAVA', 'Ruby']);
-          expect(find.text('言語未設定の総合試験'), findsOneWidget);
+          expect(_languageFilterOptions(tester), ['JAVA', 'Ruby']);
+          expect(
+            tester
+                .widget<DropdownButtonFormField<String>>(
+                  find.byType(DropdownButtonFormField<String>),
+                )
+                .initialValue,
+            'JAVA',
+          );
+          expect(find.text('すべて'), findsNothing);
+          expect(find.text('言語未設定の総合試験'), findsNothing);
           await _tapAndSettle(
             tester,
             find.byType(DropdownButtonFormField<String>),
@@ -998,7 +1007,15 @@ void main() {
           if (viewport.size.width < 720) {
             await _tapAndSettle(tester, find.byTooltip('一覧・絞り込み'));
           }
-          expect(_languageFilterOptions(tester), ['']);
+          expect(_languageFilterOptions(tester), isEmpty);
+          expect(
+            tester
+                .widget<DropdownButtonFormField<String>>(
+                  find.byType(DropdownButtonFormField<String>),
+                )
+                .onChanged,
+            isNull,
+          );
           expect(find.text('この言語のテストはありません。'), findsWidgets);
           await tester.pumpWidget(const SizedBox.shrink());
         },
@@ -1032,12 +1049,20 @@ void main() {
           );
           await _mountStudent(tester, fixture, viewport.size);
           await _selectStudentSection(tester, '先生に質問');
-          expect(_languageFilterOptions(tester), [
-            '',
+          expect(
+            tester
+                .widget<DropdownButtonFormField<String>>(
+                  find.byType(DropdownButtonFormField<String>),
+                )
+                .initialValue,
             'Flutter',
-            'JAVA',
-            'PHP',
-          ]);
+          );
+          expect(find.text('すべて'), findsNothing);
+          expect(
+            find.byKey(const ValueKey('teacher-directory-27')),
+            findsOneWidget,
+          );
+          expect(_languageFilterOptions(tester), ['Flutter', 'JAVA', 'PHP']);
           await _tapAndSettle(
             tester,
             find.byType(DropdownButtonFormField<String>),
@@ -1059,12 +1084,7 @@ void main() {
             'JAVA',
           );
           expect(find.text('JAVA の担当の先生はいません'), findsOneWidget);
-          expect(_languageFilterOptions(tester), [
-            '',
-            'Flutter',
-            'JAVA',
-            'PHP',
-          ]);
+          expect(_languageFilterOptions(tester), ['Flutter', 'JAVA', 'PHP']);
           await _tapAndSettle(
             tester,
             find.byType(DropdownButtonFormField<String>),
@@ -1183,9 +1203,9 @@ void main() {
         },
       );
 
-      testWidgets('teacher directory opens a direct chat without choosing a resource', (
-        tester,
-      ) async {
+      testWidgets(
+        'teacher directory opens a direct chat without choosing a resource',
+        (tester) async {
         final fixture = _StudentApiFixture(
           videos: [
             _videoJson,
@@ -1224,8 +1244,13 @@ void main() {
           reason: '窄い画面で副題が折り返しても絞り込み欄と重ならない。',
         );
 
-        for (final teacher in [(id: 11, name: 'A先生'), (id: 12, name: 'B先生')]) {
-          final card = find.byKey(ValueKey('teacher-directory-${teacher.id}'));
+          for (final teacher in [
+            (id: 11, name: 'A先生'),
+            (id: 12, name: 'B先生'),
+          ]) {
+            final card = find.byKey(
+              ValueKey('teacher-directory-${teacher.id}'),
+            );
           expect(
             card,
             findsOneWidget,
@@ -1295,7 +1320,8 @@ void main() {
         );
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox.shrink());
-      });
+        },
+      );
 
       testWidgets(
         'teacher directory preserves separate existing conversations for the same teacher',

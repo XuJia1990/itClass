@@ -16,24 +16,29 @@ class _LearningLanguageFilter extends StatelessWidget {
     required this.languages,
     required this.value,
     required this.onChanged,
+    this.includeAll = true,
     this.decoration = const InputDecoration(labelText: '学習言語 / 教室'),
   });
   final List<String> languages;
   final String? value;
   final ValueChanged<String?> onChanged;
+  final bool includeAll;
   final InputDecoration decoration;
   @override
   Widget build(BuildContext context) => DropdownButtonFormField<String>(
     key: ValueKey('language-filter-$value'),
-    initialValue: value ?? '',
+    initialValue: value ?? (includeAll ? '' : languages.firstOrNull),
     isExpanded: true,
     decoration: decoration,
+    hint: const Text('選択できる学習言語はありません'),
     items: [
-      const DropdownMenuItem(value: '', child: Text('すべて')),
+      if (includeAll) const DropdownMenuItem(value: '', child: Text('すべて')),
       for (final language in _uniqueLanguages([...languages, ?value]))
         DropdownMenuItem(value: language, child: Text(language)),
     ],
-    onChanged: (value) => onChanged(value == '' ? null : value),
+    onChanged: !includeAll && languages.isEmpty
+        ? null
+        : (value) => onChanged(value == '' ? null : value),
   );
 }
 
@@ -56,7 +61,7 @@ class _TeacherGradingWorkspaceState extends State<_TeacherGradingWorkspace> {
   List<SchoolClassroom> _classrooms = [];
   int _page = 1;
   int _total = 0;
-  int? _status = 20;
+  int? _status;
   String? _language;
   bool _loading = false;
   String? _error;
@@ -70,7 +75,7 @@ class _TeacherGradingWorkspaceState extends State<_TeacherGradingWorkspace> {
 
   Future<void> _loadClassrooms() async {
     try {
-      final rooms = await ItClassApi.instance.availableClassrooms();
+      final rooms = await ItClassApi.instance.myClassrooms();
       if (mounted) setState(() => _classrooms = rooms);
     } catch (_) {
       /* The attempt list can still be refreshed independently. */

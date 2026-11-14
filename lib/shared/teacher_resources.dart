@@ -247,11 +247,9 @@ class _TeacherMaterialManagement extends StatefulWidget {
   const _TeacherMaterialManagement({
     super.key,
     required this.kind,
-    required this.classrooms,
     required this.languages,
   });
   final _TeacherMaterialKind kind;
-  final List<SchoolClassroom> classrooms;
   final List<String> languages;
 
   @override
@@ -326,7 +324,6 @@ class _TeacherMaterialManagementState
         kind: widget.kind,
         id: id,
         newFile: file,
-        classrooms: widget.classrooms,
         defaultLanguage: widget.languages.firstOrNull,
       ),
     );
@@ -345,8 +342,8 @@ class _TeacherMaterialManagementState
           icon: video ? Icons.video_file_rounded : Icons.description_rounded,
           title: '${widget.kind.label}をアップロード',
           subtitle: video
-              ? 'MP4 / MOV を登録します。教室の所属に関係なく学生が閲覧できます。'
-              : 'PDF / PPT / PPTX / DOC / DOCX を登録します。教室の指定は任意です。',
+              ? 'MP4 / MOV を登録します。'
+              : 'PDF / PPT / PPTX / DOC / DOCX を登録します。',
           buttonLabel: 'ファイルを選択',
           allowedExtensions: video
               ? const ['mp4', 'mov']
@@ -462,13 +459,11 @@ class _TeacherMaterialManagementState
 class _TeacherMaterialEditor extends StatefulWidget {
   const _TeacherMaterialEditor({
     required this.kind,
-    required this.classrooms,
     this.id,
     this.newFile,
     this.defaultLanguage,
   });
   final _TeacherMaterialKind kind;
-  final List<SchoolClassroom> classrooms;
   final int? id;
   final PlatformFile? newFile;
   final String? defaultLanguage;
@@ -489,7 +484,6 @@ class _TeacherMaterialEditorState extends State<_TeacherMaterialEditor> {
   Map<String, dynamic>? _original;
   Set<int> _teacherIds = {};
   List<ResourceTeacher> _teachers = const [];
-  int? _classroomId;
   int _status = 0;
   PlatformFile? _replacement;
   Map<String, dynamic>? _uploadedFile;
@@ -498,7 +492,6 @@ class _TeacherMaterialEditorState extends State<_TeacherMaterialEditor> {
   bool _saving = false;
   bool _conflict = false;
   String? _error;
-  int _formRevision = 0;
 
   @override
   void initState() {
@@ -546,7 +539,6 @@ class _TeacherMaterialEditorState extends State<_TeacherMaterialEditor> {
     _duration.text = '${_asInt(data['durationSeconds']) ?? 0}';
     // teacher-get signs coverUrl as well as playUrl. Only store its permanent URL.
     _cover.text = _permanentMaterialUrl(_asString(data['coverUrl']));
-    _classroomId = _asInt(data['classroomId']);
     _status = _asInt(data['status']) ?? 0;
     _teacherIds = _asList(
       data['teacherAccountIds'],
@@ -557,7 +549,6 @@ class _TeacherMaterialEditorState extends State<_TeacherMaterialEditor> {
     _replacement = null;
     _uploadedFile = null;
     _conflict = false;
-    _formRevision++;
   }
 
   Future<void> _load() async {
@@ -696,7 +687,7 @@ class _TeacherMaterialEditorState extends State<_TeacherMaterialEditor> {
         if (widget.id != null) 'id': widget.id,
         if (widget.id != null) 'version': original['version'],
         if (widget.id != null) 'status': _status,
-        'classroomId': _classroomId,
+        'classroomId': _asInt(original['classroomId']),
         'programmingLanguage': _language.text.trim(),
         'teacherAccountIds': _teacherIds.toList(),
         'title': _title.text.trim(),
@@ -737,9 +728,6 @@ class _TeacherMaterialEditorState extends State<_TeacherMaterialEditor> {
   @override
   Widget build(BuildContext context) {
     final busy = _loading || _saving || _uploadingCover;
-    final unknownClassroom =
-        _classroomId != null &&
-        !widget.classrooms.any((item) => item.id == _classroomId);
     return PopScope(
       canPop: !_saving && !_uploadingCover,
       child: AlertDialog(
@@ -795,34 +783,6 @@ class _TeacherMaterialEditorState extends State<_TeacherMaterialEditor> {
                             'プログラミング言語（分類・任意）',
                             maxLength: 64,
                           ),
-                          DropdownButtonFormField<int>(
-                            key: ValueKey('classroom-$_formRevision'),
-                            initialValue: _classroomId ?? -1,
-                            isExpanded: true,
-                            decoration: const InputDecoration(
-                              labelText: '教室（任意の分類）',
-                            ),
-                            items: [
-                              const DropdownMenuItem(
-                                value: -1,
-                                child: Text('指定なし'),
-                              ),
-                              for (final classroom in widget.classrooms)
-                                DropdownMenuItem(
-                                  value: classroom.id,
-                                  child: Text(classroom.name),
-                                ),
-                              if (unknownClassroom)
-                                DropdownMenuItem(
-                                  value: _classroomId,
-                                  child: const Text('現在の分類（変更なし）'),
-                                ),
-                            ],
-                            onChanged: (value) => setState(
-                              () => _classroomId = value == -1 ? null : value,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
                           _numberField(_chapter, '章番号', minimum: 1),
                           _numberField(_sort, '表示順'),
                           if (widget.kind.isVideo) ...[

@@ -2930,7 +2930,6 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
             kind: widget.type == UploadMaterialType.video
                 ? _TeacherMaterialKind.video
                 : _TeacherMaterialKind.document,
-            classrooms: widget.classrooms,
             languages: _filteredLanguages,
           )
         else ...[
@@ -3319,7 +3318,7 @@ String _uploadTypeTitle(UploadMaterialType type) {
 String _uploadTypeSubtitle(UploadMaterialType type) {
   switch (type) {
     case UploadMaterialType.video:
-      return '授業動画の登録・共有編集・公開状態を管理します。教室の指定は任意です。';
+      return '授業動画の登録・共有編集・公開状態を管理します。';
     case UploadMaterialType.pdf:
       return 'PDF、PowerPoint、Word の登録・共有編集・公開状態を管理します。';
     case UploadMaterialType.test:

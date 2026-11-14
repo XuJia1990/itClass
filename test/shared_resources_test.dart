@@ -646,6 +646,7 @@ void main() {
       final fixture = _ApiFixture((request) {
         switch (request.url.path) {
           case '/app-api/school/classroom/my-list':
+            return _envelope([{'id': 5, 'name': 'Python', 'programmingLanguage': 'Python'}]);
           case '/app-api/school/classroom/available-list':
           case '/app-api/school/account/student/list-simple':
             expect(request.method, 'GET');
@@ -667,7 +668,7 @@ void main() {
               request,
               'GET',
               '/school/course-video/teacher-page',
-              query: {'pageNo': '1', 'pageSize': '20'},
+              query: {'pageNo': '1', 'pageSize': '20', 'programmingLanguages': 'Python'},
             );
             return _envelope(
               _page([

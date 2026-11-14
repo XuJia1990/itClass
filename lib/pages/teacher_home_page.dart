@@ -470,7 +470,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     await Future.wait([
       load(
         '教室',
-        ItClassApi.instance.availableClassrooms,
+        ItClassApi.instance.myClassrooms,
         (value) => _classrooms = value,
       ),
       _reloadAiQuestions(),

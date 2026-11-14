@@ -29,7 +29,11 @@ extension TeacherSharedResourceApi on ItClassApi {
     int pageNo = 1,
     String title = '',
     int? status,
+    List<String>? languages,
   }) async {
+    if (languages != null && languages.isEmpty) {
+      return const ApiPage(list: [], total: 0);
+    }
     final data = await _get<Map<String, dynamic>>(
       '/school/${kind.path}/teacher-page',
       query: {
@@ -37,6 +41,7 @@ extension TeacherSharedResourceApi on ItClassApi {
         'pageSize': '20',
         if (title.isNotEmpty) 'title': title,
         if (status != null) 'status': '$status',
+        if (languages != null) 'programmingLanguages': languages.join(','),
       },
     );
     return _page(data, (item) => item);
@@ -243,9 +248,11 @@ class _TeacherMaterialManagement extends StatefulWidget {
     super.key,
     required this.kind,
     required this.classrooms,
+    required this.languages,
   });
   final _TeacherMaterialKind kind;
   final List<SchoolClassroom> classrooms;
+  final List<String> languages;
 
   @override
   State<_TeacherMaterialManagement> createState() =>
@@ -270,6 +277,14 @@ class _TeacherMaterialManagementState
   }
 
   @override
+  void didUpdateWidget(covariant _TeacherMaterialManagement oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.languages.join(',') != widget.languages.join(',')) {
+      unawaited(_load(page: 1));
+    }
+  }
+
+  @override
   void dispose() {
     _search.dispose();
     super.dispose();
@@ -288,6 +303,7 @@ class _TeacherMaterialManagementState
         pageNo: _page,
         title: _search.text.trim(),
         status: _status,
+        languages: widget.languages,
       );
       if (!mounted || request != _request) return;
       setState(() {
@@ -1031,8 +1047,12 @@ extension _TeacherAssessmentApi on ItClassApi {
     _TeacherAssessmentKind kind,
     int page,
     String title,
-    bool mine,
-  ) async {
+    bool mine, {
+    List<String>? languages,
+  }) async {
+    if (languages != null && languages.isEmpty) {
+      return const ApiPage(list: [], total: 0);
+    }
     final data = await _get<Map<String, dynamic>>(
       '/school/exam-teacher/${kind.path}/page',
       query: {
@@ -1040,6 +1060,7 @@ extension _TeacherAssessmentApi on ItClassApi {
         'pageSize': '20',
         if (title.isNotEmpty) 'title': title,
         if (mine && kind != _TeacherAssessmentKind.question) 'mine': 'true',
+        if (languages != null) 'programmingLanguages': languages.join(','),
       },
     );
     return _page(data, (item) => item);
@@ -1072,14 +1093,18 @@ extension _TeacherAssessmentApi on ItClassApi {
 }
 
 class _TeacherAssessmentManagement extends StatefulWidget {
-  const _TeacherAssessmentManagement({super.key});
+  const _TeacherAssessmentManagement({super.key, required this.languages});
+  final List<String> languages;
   @override
   State<_TeacherAssessmentManagement> createState() =>
       _TeacherAssessmentManagementState();
 }
 
 class _TeacherAssessmentManagementState
-    extends State<_TeacherAssessmentManagement> {
+    extends State<_TeacherAssessmentManagement>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
   final _search = TextEditingController();
   _TeacherAssessmentKind _kind = _TeacherAssessmentKind.exam;
   List<Map<String, dynamic>> _items = const [];
@@ -1094,6 +1119,14 @@ class _TeacherAssessmentManagementState
   void initState() {
     super.initState();
     unawaited(_load());
+  }
+
+  @override
+  void didUpdateWidget(covariant _TeacherAssessmentManagement oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.languages.join(',') != widget.languages.join(',')) {
+      unawaited(_load(page: 1));
+    }
   }
 
   @override
@@ -1115,6 +1148,7 @@ class _TeacherAssessmentManagementState
         _page,
         _search.text.trim(),
         _mine,
+        languages: widget.languages,
       );
       if (!mounted || request != _request) return;
       setState(() {
@@ -1140,7 +1174,12 @@ class _TeacherAssessmentManagementState
   }
 
   @override
-  Widget build(BuildContext context) => Column(
+  Widget build(BuildContext context) {
+    super.build(context);
+    return _buildContent(context);
+  }
+
+  Widget _buildContent(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       Text('問題・試験用紙・試験', style: Theme.of(context).textTheme.titleLarge),

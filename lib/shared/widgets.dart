@@ -2812,6 +2812,12 @@ class _LearningUploadWorkspace extends StatefulWidget {
 }
 
 class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
+  String? _language;
+  List<String> get _teachingLanguages => _uniqueLanguages(
+    widget.classrooms.map((room) => room.programmingLanguage),
+  );
+  List<String> get _filteredLanguages =>
+      _language == null ? _teachingLanguages : [_language!];
   final _testTitleController = TextEditingController();
   final _testCategoryController = TextEditingController();
   final _testLanguageController = TextEditingController();
@@ -2842,6 +2848,7 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
   @override
   void didUpdateWidget(covariant _LearningUploadWorkspace oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!_teachingLanguages.contains(_language)) _language = null;
     if (oldWidget.type != widget.type &&
         widget.type == UploadMaterialType.test) {
       unawaited(_loadAvailableLessons());
@@ -2873,6 +2880,21 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
           subtitle: _uploadTypeSubtitle(widget.type),
         ),
         const SizedBox(height: 16),
+        _GradingFilterField(
+          label: '学習言語',
+          child: _LearningLanguageFilter(
+            decoration: const InputDecoration(),
+            languages: _teachingLanguages,
+            value: _language,
+            onChanged: (value) => setState(() => _language = value),
+          ),
+        ),
+        if (_teachingLanguages.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 12),
+            child: Text('担当する学習言語が登録されていません。'),
+          ),
+        const SizedBox(height: 16),
         if (widget.type != UploadMaterialType.test)
           _TeacherMaterialManagement(
             key: ValueKey(widget.type),
@@ -2880,6 +2902,7 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
                 ? _TeacherMaterialKind.video
                 : _TeacherMaterialKind.document,
             classrooms: widget.classrooms,
+            languages: _filteredLanguages,
           )
         else ...[
           if (_lessonError != null) ...[
@@ -2968,7 +2991,10 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
           ),
           if (_savingTest) const Text('問題・試験用紙・試験を保存中です…'),
           const SizedBox(height: 24),
-          _TeacherAssessmentManagement(key: ValueKey(_assessmentRevision)),
+          _TeacherAssessmentManagement(
+            key: ValueKey(_assessmentRevision),
+            languages: _filteredLanguages,
+          ),
         ],
       ],
     );

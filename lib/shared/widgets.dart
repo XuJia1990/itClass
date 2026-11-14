@@ -2813,6 +2813,7 @@ class _LearningUploadWorkspace extends StatefulWidget {
 
 class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
   String? _language;
+  int _languageFilterRevision = 0;
   List<String> get _teachingLanguages => _uniqueLanguages(
     widget.classrooms.map((room) => room.programmingLanguage),
   );
@@ -2823,10 +2824,27 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
   final _testLanguageController = TextEditingController();
   final _durationController = TextEditingController(text: '0');
   final _attemptsController = TextEditingController(text: '0');
-  int _selectedTestLesson = 0;
+  int? _selectedTestLessonId;
+  String _defaultTestTitle = '';
+  String _defaultTestCategory = '';
   int _questionCount = 3;
   List<ExamQuestion> _draftQuestions = const [];
-  List<Lesson> _availableLessons = const [];
+  List<Lesson> _allLessons = const [];
+  List<Lesson> get _availableLessons => _allLessons
+      .where(
+        (lesson) => _filteredLanguages.any(
+          (language) =>
+              language.toUpperCase() == lesson.level.trim().toUpperCase(),
+        ),
+      )
+      .toList();
+  int get _selectedTestLesson {
+    final index = _availableLessons.indexWhere(
+      (lesson) => lesson.id == _selectedTestLessonId,
+    );
+    return index < 0 ? 0 : index;
+  }
+
   Set<int> _teacherIds = _currentResponsibleTeacherIds();
   bool _loadingLessons = false;
   bool _generatingQuestions = false;
@@ -2840,6 +2858,7 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
   @override
   void initState() {
     super.initState();
+    _syncTestDefaults();
     if (widget.type == UploadMaterialType.test) {
       unawaited(_loadAvailableLessons());
     }
@@ -2849,6 +2868,12 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
   void didUpdateWidget(covariant _LearningUploadWorkspace oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!_teachingLanguages.contains(_language)) _language = null;
+    final oldLanguages = _uniqueLanguages(
+      oldWidget.classrooms.map((room) => room.programmingLanguage),
+    );
+    if (oldLanguages.join(',') != _teachingLanguages.join(',')) {
+      _syncTestDefaults();
+    }
     if (oldWidget.type != widget.type &&
         widget.type == UploadMaterialType.test) {
       unawaited(_loadAvailableLessons());
@@ -2880,13 +2905,17 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
           subtitle: _uploadTypeSubtitle(widget.type),
         ),
         const SizedBox(height: 16),
-        _GradingFilterField(
-          label: '学習言語',
-          child: _LearningLanguageFilter(
-            decoration: const InputDecoration(),
-            languages: _teachingLanguages,
-            value: _language,
-            onChanged: (value) => setState(() => _language = value),
+        AbsorbPointer(
+          key: ValueKey('upload-language-$_languageFilterRevision'),
+          absorbing: _savingTest || _generatingQuestions,
+          child: _GradingFilterField(
+            label: '学習言語',
+            child: _LearningLanguageFilter(
+              decoration: const InputDecoration(),
+              languages: _teachingLanguages,
+              value: _language,
+              onChanged: (value) => unawaited(_changeLanguage(value)),
+            ),
           ),
         ),
         if (_teachingLanguages.isEmpty)
@@ -2929,6 +2958,7 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: _testLanguageController,
+                      readOnly: _language != null,
                       decoration: const InputDecoration(
                         labelText: 'プログラミング言語（分類・任意）',
                       ),
@@ -2964,7 +2994,7 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
             ),
           ),
           AbsorbPointer(
-            absorbing: _savingTest,
+            absorbing: _savingTest || _generatingQuestions,
             child: _TeacherTestUploadPanel(
               titleController: _testTitleController,
               categoryController: _testCategoryController,
@@ -2974,11 +3004,9 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
               questions: _draftQuestions,
               generating: _generatingQuestions,
               onLessonChanged: (index) => setState(() {
-                _selectedTestLesson = index;
                 final lesson = _availableLessons[index];
-                _testTitleController.text = '${lesson.title} テスト';
-                _testCategoryController.text = lesson.level;
-                _testLanguageController.text = lesson.level;
+                _selectedTestLessonId = lesson.id;
+                _syncTestDefaults(force: true);
               }),
               onQuestionCountChanged: (count) =>
                   setState(() => _questionCount = count),
@@ -3000,6 +3028,77 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
     );
   }
 
+  Future<void> _changeLanguage(String? value) async {
+    if (_language == value || _savingTest || _generatingQuestions) return;
+    final changesDraftLanguage =
+        value != null &&
+        value.toUpperCase() !=
+            _testLanguageController.text.trim().toUpperCase();
+    if (changesDraftLanguage && _draftQuestions.isNotEmpty) {
+      final discard = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('学習言語を変更しますか？'),
+          content: const Text('作成中の問題をクリアし、選択した言語の教材で新しいテストを作成します。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('キャンセル'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('変更する'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return;
+      if (discard != true) {
+        setState(() => _languageFilterRevision++);
+        return;
+      }
+    }
+    setState(() {
+      _language = value;
+      if (changesDraftLanguage) _draftQuestions = const [];
+      _syncTestDefaults(force: changesDraftLanguage);
+    });
+  }
+
+  void _syncTestDefaults({bool force = false}) {
+    final lessons = _availableLessons;
+    final lesson =
+        lessons.where((item) => item.id == _selectedTestLessonId).firstOrNull ??
+        lessons.firstOrNull;
+    _selectedTestLessonId = lesson?.id;
+    final language =
+        _language ??
+        _teachingLanguages
+            .where(
+              (value) =>
+                  value.toUpperCase() == lesson?.level.trim().toUpperCase(),
+            )
+            .firstOrNull ??
+        _teachingLanguages.firstOrNull ??
+        '';
+    final title = lesson == null
+        ? (language.isEmpty ? '' : '$language テスト')
+        : '${lesson.title} テスト';
+    if (force ||
+        _testTitleController.text.isEmpty ||
+        _testTitleController.text == _defaultTestTitle) {
+      _testTitleController.text = title;
+    }
+    if (force ||
+        _testCategoryController.text.isEmpty ||
+        _testCategoryController.text == _defaultTestCategory) {
+      _testCategoryController.text = language;
+    }
+    _testLanguageController.text = language;
+    _defaultTestTitle = title;
+    _defaultTestCategory = language;
+  }
+
   Future<void> _loadAvailableLessons() async {
     if (_loadingLessons) return;
     setState(() {
@@ -3010,14 +3109,8 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
       final docs = await ItClassApi.instance.courseDocuments();
       if (!mounted) return;
       setState(() {
-        _availableLessons = docs.list;
-        _selectedTestLesson = 0;
-        if (_availableLessons.isNotEmpty && _testTitleController.text.isEmpty) {
-          final lesson = _availableLessons.first;
-          _testTitleController.text = '${lesson.title} テスト';
-          _testCategoryController.text = lesson.level;
-          _testLanguageController.text = lesson.level;
-        }
+        _allLessons = docs.list;
+        _syncTestDefaults();
       });
     } catch (error) {
       if (mounted) setState(() => _lessonError = userFacingError(error));
@@ -3476,6 +3569,10 @@ class _TeacherTestUploadPanel extends StatelessWidget {
                           decoration: const InputDecoration(labelText: 'テスト名'),
                         ),
                         DropdownButtonFormField<int>(
+                          key: ValueKey(
+                            'test-lesson-${lessons.map((lesson) => lesson.id).join(',')}-$selectedLessonIndex',
+                          ),
+                          isExpanded: true,
                           initialValue: lessons.isEmpty
                               ? null
                               : selectedLessonIndex.clamp(
@@ -3490,7 +3587,10 @@ class _TeacherTestUploadPanel extends StatelessWidget {
                             for (var i = 0; i < lessons.length; i++)
                               DropdownMenuItem<int>(
                                 value: i,
-                                child: Text(lessons[i].title),
+                                child: Text(
+                                  lessons[i].title,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                           ],
                           onChanged: lessons.isEmpty

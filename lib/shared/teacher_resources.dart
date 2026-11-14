@@ -474,9 +474,11 @@ class _TeacherMaterialEditor extends StatefulWidget {
 
 class _TeacherMaterialEditorState extends State<_TeacherMaterialEditor> {
   final _form = GlobalKey<FormState>();
+  String get _uploadLanguage => widget.id == null
+      ? (widget.defaultLanguage ?? '').trim()
+      : _asString(_original?['programmingLanguage']).trim();
   final _title = TextEditingController();
   final _description = TextEditingController();
-  final _language = TextEditingController();
   final _chapter = TextEditingController();
   final _sort = TextEditingController();
   final _duration = TextEditingController();
@@ -518,7 +520,6 @@ class _TeacherMaterialEditorState extends State<_TeacherMaterialEditor> {
     for (final controller in [
       _title,
       _description,
-      _language,
       _chapter,
       _sort,
       _duration,
@@ -533,7 +534,6 @@ class _TeacherMaterialEditorState extends State<_TeacherMaterialEditor> {
     _original = Map.of(data);
     _title.text = _asString(data['title']);
     _description.text = _asString(data['description']);
-    _language.text = _asString(data['programmingLanguage']);
     _chapter.text = '${_asInt(data['chapterNo']) ?? 1}';
     _sort.text = '${_asInt(data['sort']) ?? 0}';
     _duration.text = '${_asInt(data['durationSeconds']) ?? 0}';
@@ -653,6 +653,10 @@ class _TeacherMaterialEditorState extends State<_TeacherMaterialEditor> {
       return;
     }
     if (!_form.currentState!.validate()) return;
+    if (widget.id == null && _uploadLanguage.isEmpty) {
+      setState(() => _error = '担当する学習言語を選択してください。');
+      return;
+    }
     if (_teacherIds.isEmpty || _teacherIds.length > 100) {
       setState(() => _error = '担当講師を1〜100名選択してください。');
       return;
@@ -688,7 +692,7 @@ class _TeacherMaterialEditorState extends State<_TeacherMaterialEditor> {
         if (widget.id != null) 'version': original['version'],
         if (widget.id != null) 'status': _status,
         'classroomId': _asInt(original['classroomId']),
-        'programmingLanguage': _language.text.trim(),
+        'programmingLanguage': _uploadLanguage,
         'teacherAccountIds': _teacherIds.toList(),
         'title': _title.text.trim(),
         'description': _description.text.trim(),
@@ -778,10 +782,11 @@ class _TeacherMaterialEditorState extends State<_TeacherMaterialEditor> {
                             maxLength: 1000,
                             lines: 3,
                           ),
-                          _textField(
-                            _language,
-                            'プログラミング言語（分類・任意）',
-                            maxLength: 64,
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _UploadLanguageDisplay(
+                              language: _uploadLanguage,
+                            ),
                           ),
                           _numberField(_chapter, '章番号', minimum: 1),
                           _numberField(_sort, '表示順'),

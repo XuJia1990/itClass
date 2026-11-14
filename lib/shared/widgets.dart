@@ -2797,6 +2797,19 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace> {
   }
 }
 
+class _UploadLanguageDisplay extends StatelessWidget {
+  const _UploadLanguageDisplay({required this.language});
+
+  final String language;
+
+  @override
+  Widget build(BuildContext context) => InputDecorator(
+    key: const ValueKey('upload-language-display'),
+    decoration: const InputDecoration(labelText: '学習言語'),
+    child: Text(language.isEmpty ? '未選択' : language),
+  );
+}
+
 class _LearningUploadWorkspace extends StatefulWidget {
   const _LearningUploadWorkspace({
     required this.type,
@@ -2821,7 +2834,7 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
       _language == null ? _teachingLanguages : [_language!];
   final _testTitleController = TextEditingController();
   final _testCategoryController = TextEditingController();
-  final _testLanguageController = TextEditingController();
+  String get _uploadLanguage => _filteredLanguages.firstOrNull ?? '';
   final _durationController = TextEditingController(text: '0');
   final _attemptsController = TextEditingController(text: '0');
   int? _selectedTestLessonId;
@@ -2832,10 +2845,8 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
   List<Lesson> _allLessons = const [];
   List<Lesson> get _availableLessons => _allLessons
       .where(
-        (lesson) => _filteredLanguages.any(
-          (language) =>
-              language.toUpperCase() == lesson.level.trim().toUpperCase(),
-        ),
+        (lesson) =>
+            _uploadLanguage.toUpperCase() == lesson.level.trim().toUpperCase(),
       )
       .toList();
   int get _selectedTestLesson {
@@ -2885,7 +2896,6 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
     for (final controller in [
       _testTitleController,
       _testCategoryController,
-      _testLanguageController,
       _durationController,
       _attemptsController,
     ]) {
@@ -2955,13 +2965,7 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
                   children: [
                     const Text('保存完了後、すべての正常な学生が受験できます。'),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: _testLanguageController,
-                      readOnly: _language != null,
-                      decoration: const InputDecoration(
-                        labelText: 'プログラミング言語（分類・任意）',
-                      ),
-                    ),
+                    _UploadLanguageDisplay(language: _uploadLanguage),
                     const SizedBox(height: 12),
                     TextField(
                       controller: _durationController,
@@ -3029,10 +3033,9 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
 
   Future<void> _changeLanguage(String? value) async {
     if (_language == value || _savingTest || _generatingQuestions) return;
+    final nextLanguage = value ?? _teachingLanguages.firstOrNull ?? '';
     final changesDraftLanguage =
-        value != null &&
-        value.toUpperCase() !=
-            _testLanguageController.text.trim().toUpperCase();
+        nextLanguage.toUpperCase() != _uploadLanguage.toUpperCase();
     if (changesDraftLanguage && _draftQuestions.isNotEmpty) {
       final discard = await showDialog<bool>(
         context: context,
@@ -3070,16 +3073,7 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
         lessons.where((item) => item.id == _selectedTestLessonId).firstOrNull ??
         lessons.firstOrNull;
     _selectedTestLessonId = lesson?.id;
-    final language =
-        _language ??
-        _teachingLanguages
-            .where(
-              (value) =>
-                  value.toUpperCase() == lesson?.level.trim().toUpperCase(),
-            )
-            .firstOrNull ??
-        _teachingLanguages.firstOrNull ??
-        '';
+    final language = _uploadLanguage;
     final title = lesson == null
         ? (language.isEmpty ? '' : '$language テスト')
         : '${lesson.title} テスト';
@@ -3093,7 +3087,6 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
         _testCategoryController.text == _defaultTestCategory) {
       _testCategoryController.text = language;
     }
-    _testLanguageController.text = language;
     _defaultTestTitle = title;
     _defaultTestCategory = language;
   }
@@ -3130,7 +3123,7 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
             _availableLessons.length - 1,
           )];
       final questions = await ItClassApi.instance.generateExamQuestions(
-        programmingLanguage: _testLanguageController.text.trim(),
+        programmingLanguage: _uploadLanguage,
         topic: lesson.title,
         count: _questionCount,
       );
@@ -3182,9 +3175,9 @@ class _LearningUploadWorkspaceState extends State<_LearningUploadWorkspace> {
       _notice('テスト名、問題文、すべての選択肢と正解を入力してください。');
       return;
     }
-    final language = _testLanguageController.text.trim();
-    if (language.length > 64) {
-      _notice('プログラミング言語は64文字以内で入力してください。');
+    final language = _uploadLanguage;
+    if (language.isEmpty) {
+      _notice('担当する学習言語を選択してください。');
       return;
     }
     // Reuse completed stages after a later stage fails, provided the draft has

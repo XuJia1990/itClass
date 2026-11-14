@@ -243,17 +243,36 @@ void main() {
     await tap(tester, find.text('アップロード'));
   }
 
+  void expectUploadLanguage(String language) {
+    final display = find.byKey(const ValueKey('upload-language-display'));
+    expect(
+      find.descendant(of: display, matching: find.text(language)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: display, matching: find.byType(EditableText)),
+      findsNothing,
+    );
+  }
+
   Future<void> expectMaterialLanguage(
     WidgetTester tester,
     String language,
   ) async {
     final input = find.descendant(
       of: find.byType(AlertDialog),
-      matching: field('プログラミング言語（分類・任意）'),
+      matching: find.byKey(const ValueKey('upload-language-display')),
     );
     await tester.ensureVisible(input);
     await settle(tester);
-    expect(tester.widget<TextField>(input).controller!.text, language);
+    expect(
+      find.descendant(of: input, matching: find.text(language)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: input, matching: find.byType(EditableText)),
+      findsNothing,
+    );
   }
 
   for (final material in [
@@ -418,16 +437,11 @@ void main() {
   );
 
   testWidgets(
-    'test defaults, reference materials and saved payload follow Flutter',
+    'All uses first assigned language for test materials and saved payload',
     (tester) async {
       await mount(tester, 1280);
-      await selectLanguage(tester, 'Flutter');
       await selectType(tester, 'テストアップロード', 1280);
-      expect(fieldValue(tester, 'プログラミング言語（分類・任意）'), 'Flutter');
-      expect(
-        tester.widget<TextField>(field('プログラミング言語（分類・任意）')).readOnly,
-        isTrue,
-      );
+      expectUploadLanguage('Flutter');
       await reveal(tester, lessonPicker());
       expect(fieldValue(tester, 'テスト名'), 'Flutter講義資料1 テスト');
       expect(fieldValue(tester, '分類'), 'Flutter');
@@ -464,12 +478,12 @@ void main() {
       await reveal(tester, lessonPicker());
       expect(fieldValue(tester, 'テスト名'), 'Flutter講義資料1 テスト');
       await selectLanguage(tester, 'PHP');
-      expect(fieldValue(tester, 'プログラミング言語（分類・任意）'), 'PHP');
+      expectUploadLanguage('PHP');
       await reveal(tester, lessonPicker());
       expect(fieldValue(tester, 'テスト名'), 'PHP講義資料 テスト');
       expect(fieldValue(tester, '分類'), 'PHP');
       await selectLanguage(tester, 'Ruby');
-      expect(fieldValue(tester, 'プログラミング言語（分類・任意）'), 'Ruby');
+      expectUploadLanguage('Ruby');
       await reveal(tester, lessonPicker());
       expect(fieldValue(tester, 'テスト名'), 'Ruby テスト');
       expect(fieldValue(tester, '分類'), 'Ruby');
@@ -535,9 +549,17 @@ void main() {
       );
       await selectLanguage(tester, 'PHP');
       await tap(tester, find.text('変更する'));
-      expect(fieldValue(tester, 'プログラミング言語（分類・任意）'), 'PHP');
+      expectUploadLanguage('PHP');
       await reveal(tester, lessonPicker());
       expect(fieldValue(tester, 'テスト名'), 'PHP講義資料 テスト');
+      expect(find.text('確認済みテストを保存'), findsNothing);
+      await tap(tester, find.text('AIで選択問題を生成'));
+      await selectLanguage(tester, 'すべて');
+      expect(find.text('学習言語を変更しますか？'), findsOneWidget);
+      await tap(tester, find.text('変更する'));
+      expectUploadLanguage('Flutter');
+      await reveal(tester, lessonPicker());
+      expect(fieldValue(tester, 'テスト名'), 'Flutter講義資料1 テスト');
       expect(find.text('確認済みテストを保存'), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
     },

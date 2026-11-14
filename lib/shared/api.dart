@@ -591,8 +591,25 @@ class ItClassApi {
   }
 
   Future<List<SchoolClassroom>> availableClassrooms() async {
-    final data = await _get<List<dynamic>>('/school/classroom/available-list');
-    return data.map((item) => SchoolClassroom.fromJson(_asMap(item))).toList();
+    try {
+      final data = await _get<List<dynamic>>(
+        '/school/classroom/available-list',
+      );
+      return data
+          .map((item) => SchoolClassroom.fromJson(_asMap(item)))
+          .toList();
+    } on ApiException catch (error) {
+      if (error.code == 401 || error.code == 403) rethrow;
+      debugPrint(
+        '[itClass API] available classrooms unavailable; using my classrooms',
+      );
+      return myClassrooms();
+    } catch (_) {
+      debugPrint(
+        '[itClass API] invalid available classrooms response; using my classrooms',
+      );
+      return myClassrooms();
+    }
   }
 
   Future<ApiPage<LearningVideo>> courseVideos({

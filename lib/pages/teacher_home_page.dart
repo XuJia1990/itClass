@@ -155,23 +155,22 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           ],
         );
       case TeacherSection.codeScoring:
-        return _HistoryPanel(
-          title: '管理メニュー',
-          children: [
-            _CompactListCard(
-              selected: true,
-              title: '成績確認',
-              subtitle: '${_teacherCodeReviews.length}件',
-              detail: '学生の提出履歴と採点状況を確認します。',
-              onTap: () => unawaited(_loadTeacherData()),
+        return Container(
+          color: _AppPalette.paper,
+          child: SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 14),
+              children: [
+                _CompactListCard(
+                  selected: true,
+                  title: '成績確認',
+                  subtitle: '${_teacherCodeReviews.length}件',
+                  detail: '学生の提出履歴と採点状況を確認します。',
+                  onTap: () => unawaited(_loadTeacherData()),
+                ),
+              ],
             ),
-            _CompactListCard(
-              title: '学習資料アップロード',
-              subtitle: '共通教材',
-              detail: '動画、文書教材、テスト',
-              onTap: () => setState(() => _section = TeacherSection.relearning),
-            ),
-          ],
+          ),
         );
       case TeacherSection.system:
         return _HistoryPanel(

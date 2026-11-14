@@ -75,6 +75,32 @@ void main() {
     );
   }
 
+  test('available classrooms falls back to assigned classrooms', () async {
+    final requestedPaths = <String>[];
+    final api = ItClassApi.forTesting(
+      MockClient((request) async {
+        requestedPaths.add(request.url.path);
+        if (request.url.path.endsWith('/classroom/available-list')) {
+          return envelope(null);
+        }
+        expect(request.url.path, endsWith('/classroom/my-list'));
+        return envelope([
+          {'id': 7, 'name': 'JAVA教室', 'programmingLanguage': 'JAVA'},
+        ]);
+      }),
+    );
+
+    final classrooms = await api.availableClassrooms();
+
+    expect(requestedPaths, [
+      '/app-api/school/classroom/available-list',
+      '/app-api/school/classroom/my-list',
+    ]);
+    expect(classrooms, hasLength(1));
+    expect(classrooms.single.id, 7);
+    expect(classrooms.single.name, 'JAVA教室');
+  });
+
   test('wrong login role is never persisted', () async {
     final api = ItClassApi.forTesting(
       MockClient(

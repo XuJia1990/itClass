@@ -244,6 +244,8 @@ void main() {
               .queryParameters['programmingLanguage'],
           'Java',
         );
+        expect(find.text('管理メニュー'), findsNothing);
+        expect(find.text('学習資料アップロード'), findsNothing);
         final edit = find.byTooltip('採点する');
         await tester.ensureVisible(edit);
         await tester.tap(edit);

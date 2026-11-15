@@ -453,7 +453,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
                   selected: _selectedPracticeChapter == i,
                   title: _practiceLessonGroups[i].title,
                   subtitle:
-                      '${_practiceLessonGroups[i].language} · 第${_practiceLessonGroups[i].chapterNo}課 · ${_practiceLessonGroups[i].questions.length}問',
+                      '${_practiceLessonGroups[i].language} · 第${_practiceLessonGroups[i].chapterNo}課 · ${_practiceLessonGroups[i].questions.where((q) => q.answer?.hasResult == true).length}/${_practiceLessonGroups[i].questions.length}問確認済み',
                   detail: _practiceLessonGroups[i].questions
                       .map((question) => question.title)
                       .join(' / '),
@@ -626,6 +626,18 @@ class _StudentHomePageState extends State<StudentHomePage> {
               groups[_selectedPracticeChapter.clamp(0, groups.length - 1)];
           return _StudentPracticeWorkspace(
             questions: group.questions,
+            onSaved: (answer) {
+              if (!mounted) return;
+              setState(() {
+                _apiPracticeQuestions = _apiPracticeQuestions
+                    .map(
+                      (question) => question.id == answer.questionId
+                          ? question.withAnswer(answer)
+                          : question,
+                    )
+                    .toList();
+              });
+            },
             consultationBuilder: (question) =>
                 question.courseVideoId == null || question.courseVideoId! <= 0
                 ? const SizedBox.shrink()
@@ -1353,6 +1365,10 @@ class _StudentHomePageState extends State<StudentHomePage> {
       }
     }
 
+    final practiceAnswersAtStart = {
+      for (final question in _apiPracticeQuestions)
+        question.id: question.answer,
+    };
     // Each menu refreshes its own data. Initial loading also supplies badges
     // and language choices; selecting a menu never starts an exam or sends a chat.
     await Future.wait([
@@ -1405,7 +1421,17 @@ class _StudentHomePageState extends State<StudentHomePage> {
           final selected = _practiceLessonGroups
               .elementAtOrNull(_selectedPracticeChapter)
               ?.title;
-          _apiPracticeQuestions = value;
+          // Preserve only saves completed during this read; later refreshes are authoritative.
+          final current = {
+            for (final q in _apiPracticeQuestions) q.id: q.answer,
+          };
+          _apiPracticeQuestions = value.map((q) {
+            final saved = current[q.id];
+            return saved != null &&
+                    !identical(saved, practiceAnswersAtStart[q.id])
+                ? q.withAnswer(saved)
+                : q;
+          }).toList();
           final index = _practiceLessonGroups.indexWhere(
             (group) => group.title == selected,
           );
@@ -2137,23 +2163,15 @@ class _StudentResourceConsultationButtonState
   }
 }
 
-class _StudentPracticeWorkspace extends StatefulWidget {
+class _StudentPracticeWorkspace extends StatelessWidget {
   const _StudentPracticeWorkspace({
     required this.questions,
     required this.consultationBuilder,
+    required this.onSaved,
   });
-
   final List<SchoolPracticeQuestion> questions;
   final Widget Function(SchoolPracticeQuestion) consultationBuilder;
-
-  @override
-  State<_StudentPracticeWorkspace> createState() =>
-      _StudentPracticeWorkspaceState();
-}
-
-class _StudentPracticeWorkspaceState extends State<_StudentPracticeWorkspace> {
-  final Map<int, String> _answers = {};
-  final Set<int> _checked = {};
+  final ValueChanged<SchoolPracticeAnswer> onSaved;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -2161,26 +2179,19 @@ class _StudentPracticeWorkspaceState extends State<_StudentPracticeWorkspace> {
     children: [
       _SectionHeader(
         icon: Icons.account_tree_rounded,
-        title: widget.questions.first.lessonTitle,
+        title: questions.first.lessonTitle,
         subtitle:
-            '${widget.questions.first.programmingLanguage} · ${widget.questions.length}問',
+            '${questions.first.programmingLanguage} · ${questions.where((q) => q.answer?.hasResult == true).length}/${questions.length}問確認済み · ${questions.where((q) => q.answer?.correct == true).length}問正解',
       ),
       const SizedBox(height: 16),
-      for (var i = 0; i < widget.questions.length; i++) ...[
+      for (var i = 0; i < questions.length; i++) ...[
         _PracticeQuestionCard(
+          key: ValueKey('practice-${questions[i].id}'),
           number: i + 1,
-          question: widget.questions[i],
-          selectedOption: _answers[widget.questions[i].id],
-          checked: _checked.contains(widget.questions[i].id),
-          onOptionSelected: (answer) => setState(() {
-            _answers[widget.questions[i].id] = answer;
-            _checked.remove(widget.questions[i].id);
-          }),
-          onCheck: _answers[widget.questions[i].id] == null
-              ? null
-              : () => setState(() => _checked.add(widget.questions[i].id)),
+          question: questions[i],
+          onSaved: onSaved,
         ),
-        widget.consultationBuilder(widget.questions[i]),
+        consultationBuilder(questions[i]),
         const SizedBox(height: 12),
       ],
     ],

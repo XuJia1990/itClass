@@ -2090,101 +2090,138 @@ class _PracticeQuestionBankWorkspace extends StatefulWidget {
 
 class _PracticeQuestionBankWorkspaceState
     extends State<_PracticeQuestionBankWorkspace> {
-  final Map<int, String> _selectedOptions = {};
-  final Set<int> _checkedQuestions = {};
-
+  final Map<int, SchoolPracticeAnswer> _saved = {};
   @override
   void didUpdateWidget(covariant _PracticeQuestionBankWorkspace oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final oldIds = oldWidget.questions.map((question) => question.id).toSet();
-    final newIds = widget.questions.map((question) => question.id).toSet();
-    if (oldIds.length != newIds.length || !oldIds.containsAll(newIds)) {
-      _selectedOptions.clear();
-      _checkedQuestions.clear();
+    if (oldWidget.questions != widget.questions) _saved.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      const _SectionHeader(
+        icon: Icons.account_tree_rounded,
+        title: '問題バンク',
+        subtitle: '各コースの学習内容に対応した練習問題です。',
+      ),
+      const SizedBox(height: 16),
+      if (widget.questions.isEmpty) const Text('このコースの練習問題はまだ登録されていません。'),
+      for (var i = 0; i < widget.questions.length; i++) ...[
+        _PracticeQuestionCard(
+          key: ValueKey('practice-${widget.questions[i].id}'),
+          number: i + 1,
+          question: _saved[widget.questions[i].id] == null
+              ? widget.questions[i]
+              : widget.questions[i].withAnswer(_saved[widget.questions[i].id]!),
+          onSaved: (answer) {
+            if (mounted) setState(() => _saved[answer.questionId] = answer);
+          },
+        ),
+        const SizedBox(height: 12),
+      ],
+    ],
+  );
+}
+
+class _PracticeQuestionCard extends StatefulWidget {
+  const _PracticeQuestionCard({
+    super.key,
+    required this.number,
+    required this.question,
+    required this.onSaved,
+  });
+  final int number;
+  final SchoolPracticeQuestion question;
+  final ValueChanged<SchoolPracticeAnswer> onSaved;
+  @override
+  State<_PracticeQuestionCard> createState() => _PracticeQuestionCardState();
+}
+
+class _PracticeQuestionCardState extends State<_PracticeQuestionCard> {
+  SchoolPracticeAnswer? _answer;
+  String? _selected;
+  bool _saving = false;
+  String? _error;
+  String? _failedOption;
+  bool _failedCheck = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _restore();
+  }
+
+  void _restore() {
+    _answer = widget.question.answer;
+    _selected = _answer?.selectedOption;
+  }
+
+  @override
+  void didUpdateWidget(covariant _PracticeQuestionCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_saving && oldWidget.question.answer != widget.question.answer) {
+      _restore();
+    }
+  }
+
+  Future<void> _save(String option, bool check) async {
+    if (_saving) return;
+    final owner = ItClassSession.current?.schoolAccountId;
+    final onSaved = widget.onSaved;
+    final questionId = widget.question.id;
+    setState(() {
+      _saving = true;
+      _selected = option;
+      _error = null;
+    });
+    try {
+      final answer = await ItClassApi.instance.savePracticeAnswer(
+        questionId: questionId,
+        selectedOption: option,
+        checkAnswer: check,
+      );
+      if (owner != ItClassSession.current?.schoolAccountId) return;
+      // Keep the parent list current even when this chapter was closed mid-save.
+      onSaved(answer);
+      if (mounted) {
+        setState(() {
+          _answer = answer;
+          _selected = answer.selectedOption;
+        });
+      }
+    } catch (error) {
+      if (!mounted || owner != ItClassSession.current?.schoolAccountId) return;
+      setState(() {
+        _selected = _answer?.selectedOption;
+        _failedOption = option;
+        _failedCheck = check;
+        _error = '回答を保存できませんでした。${userFacingError(error)}';
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_error!)));
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final questions = widget.questions;
-    final checkedCount = questions
-        .where((question) => _checkedQuestions.contains(question.id))
-        .length;
-    final correctCount = questions.where((question) {
-      return _checkedQuestions.contains(question.id) &&
-          _selectedOptions[question.id] == question.correctOption;
-    }).length;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _SectionHeader(
-          icon: Icons.account_tree_rounded,
-          title: '問題バンク',
-          subtitle: questions.isEmpty
-              ? '各コースの学習内容に対応した練習問題です。'
-              : '第${questions.first.chapterNo}課 · ${questions.first.lessonTitle} · $checkedCount/${questions.length}問確認済み',
-        ),
-        const SizedBox(height: 16),
-        if (questions.isEmpty)
-          const _InlineNotice(
-            tone: _NoticeTone.warning,
-            title: '問題データがありません',
-            message: 'このコースの練習問題はまだ登録されていません。',
-          ),
-        if (checkedCount == questions.length && questions.isNotEmpty) ...[
-          _InlineNotice(
-            tone: correctCount == questions.length
-                ? _NoticeTone.success
-                : _NoticeTone.warning,
-            title: 'この課の練習が完了しました',
-            message:
-                '$correctCount/${questions.length}問正解です。解析を確認してから次の課へ進みましょう。',
-          ),
-          const SizedBox(height: 12),
-        ],
-        for (var i = 0; i < questions.length; i++) ...[
-          _PracticeQuestionCard(
-            number: i + 1,
-            question: questions[i],
-            selectedOption: _selectedOptions[questions[i].id],
-            checked: _checkedQuestions.contains(questions[i].id),
-            onOptionSelected: (option) {
-              setState(() {
-                _selectedOptions[questions[i].id] = option;
-                _checkedQuestions.remove(questions[i].id);
-              });
-            },
-            onCheck: _selectedOptions[questions[i].id] == null
-                ? null
-                : () => setState(() => _checkedQuestions.add(questions[i].id)),
-          ),
-          const SizedBox(height: 12),
-        ],
-      ],
-    );
-  }
-}
-
-class _PracticeQuestionCard extends StatelessWidget {
-  const _PracticeQuestionCard({
-    required this.number,
-    required this.question,
-    required this.selectedOption,
-    required this.checked,
-    required this.onOptionSelected,
-    required this.onCheck,
-  });
-
-  final int number;
-  final SchoolPracticeQuestion question;
-  final String? selectedOption;
-  final bool checked;
-  final ValueChanged<String> onOptionSelected;
-  final VoidCallback? onCheck;
-
-  @override
-  Widget build(BuildContext context) {
-    final correct = checked && selectedOption == question.correctOption;
+    final question = widget.question;
+    final checked =
+        !_saving &&
+        _answer?.hasResult == true &&
+        _answer?.checkedOption == _selected;
+    final correctOption = checked
+        ? _answer!.correctOption
+        : question.correctOption;
+    final hasResult = _answer?.hasResult == true;
+    final time = _answer?.checkedAt?.toLocal();
+    final timeLabel = time == null
+        ? ''
+        : '${time.year}/${time.month.toString().padLeft(2, '0')}/${time.day.toString().padLeft(2, '0')} ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(18),
@@ -2197,7 +2234,7 @@ class _PracticeQuestionCard extends StatelessWidget {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Chip(
-                  label: Text('第$number問'),
+                  label: Text('第${widget.number}問'),
                   backgroundColor: const Color(0xFFEFF6FF),
                   side: const BorderSide(color: Color(0xFFBFDBFE)),
                 ),
@@ -2206,6 +2243,15 @@ class _PracticeQuestionCard extends StatelessWidget {
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w900,
                   ),
+                ),
+                Text(
+                  _saving
+                      ? '保存中…'
+                      : checked
+                      ? (_answer!.correct! ? '正解・保存済み' : '不正解・保存済み')
+                      : _selected == null
+                      ? '未回答'
+                      : '選択を保存済み・未確認',
                 ),
               ],
             ),
@@ -2218,25 +2264,45 @@ class _PracticeQuestionCard extends StatelessWidget {
             for (final option in question.options) ...[
               _PracticeOptionTile(
                 option: option,
-                selected: selectedOption == option.key,
+                selected: _selected == option.key,
                 checked: checked,
-                correctOption: question.correctOption,
-                onTap: () => onOptionSelected(option.key),
+                correctOption: correctOption,
+                onTap: _saving ? null : () => _save(option.key, false),
               ),
               const SizedBox(height: 8),
             ],
             const SizedBox(height: 6),
             FilledButton.icon(
-              onPressed: onCheck,
+              onPressed: _saving || _selected == null
+                  ? null
+                  : () => _save(_selected!, true),
               icon: const Icon(Icons.check_circle_outline_rounded),
-              label: const Text('解答を確認'),
+              label: Text(_saving ? '保存中…' : '解答を確認'),
             ),
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              Text(_error!, style: const TextStyle(color: _AppPalette.coral)),
+              TextButton(
+                onPressed: _saving
+                    ? null
+                    : () => _save(_failedOption!, _failedCheck),
+                child: const Text('保存を再試行'),
+              ),
+            ],
             if (checked) ...[
               const SizedBox(height: 14),
               _InlineNotice(
-                tone: correct ? _NoticeTone.success : _NoticeTone.warning,
-                title: correct ? '正解です' : 'もう一度確認しましょう',
-                message: '正解：${question.correctOption}\n${question.analysis}',
+                tone: _answer!.correct!
+                    ? _NoticeTone.success
+                    : _NoticeTone.warning,
+                title: _answer!.correct! ? '正解です' : 'もう一度確認しましょう',
+                message: '正解：${_answer!.correctOption}\n${_answer!.analysis}',
+              ),
+            ],
+            if (hasResult) ...[
+              const SizedBox(height: 10),
+              Text(
+                '前回の確認：${_answer!.checkedOption} · ${_answer!.correct! ? '正解' : '不正解'} · $timeLabel',
               ),
             ],
           ],
@@ -2259,7 +2325,7 @@ class _PracticeOptionTile extends StatelessWidget {
   final bool selected;
   final bool checked;
   final String correctOption;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {

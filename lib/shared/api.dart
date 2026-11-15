@@ -356,8 +356,44 @@ class SchoolPracticeQuestionOption {
   final String content;
 }
 
+class SchoolPracticeAnswer {
+  const SchoolPracticeAnswer({
+    required this.questionId,
+    required this.selectedOption,
+    this.checkedOption,
+    this.correct,
+    this.correctOption = '',
+    this.analysis = '',
+    this.checkedAt,
+    this.updateTime,
+  });
+
+  factory SchoolPracticeAnswer.fromJson(Map<String, dynamic> json) =>
+      SchoolPracticeAnswer(
+        questionId: _asInt(json['questionId']) ?? 0,
+        selectedOption: _asString(json['selectedOption']),
+        checkedOption: json['checkedOption'] as String?,
+        correct: json['correct'] as bool?,
+        correctOption: _asString(json['correctOption']),
+        analysis: _asString(json['analysis']),
+        checkedAt: _asDateTime(json['checkedAt']),
+        updateTime: _asDateTime(json['updateTime']),
+      );
+  final int questionId;
+  final String selectedOption;
+  final String? checkedOption;
+  final bool? correct;
+  final String correctOption;
+  final String analysis;
+  final DateTime? checkedAt;
+  final DateTime? updateTime;
+  bool get hasResult =>
+      checkedOption != null && correct != null && checkedAt != null;
+}
+
 class SchoolPracticeQuestion {
   const SchoolPracticeQuestion({
+    this.answer,
     required this.id,
     required this.classroomId,
     required this.courseVideoId,
@@ -375,6 +411,9 @@ class SchoolPracticeQuestion {
 
   factory SchoolPracticeQuestion.fromJson(Map<String, dynamic> json) {
     return SchoolPracticeQuestion(
+      answer: json['answer'] == null
+          ? null
+          : SchoolPracticeAnswer.fromJson(_asMap(json['answer'])),
       id: _asInt(json['id']) ?? 0,
       classroomId: _asInt(json['classroomId']) ?? 0,
       courseVideoId: _asInt(json['courseVideoId']),
@@ -393,6 +432,24 @@ class SchoolPracticeQuestion {
     );
   }
 
+  final SchoolPracticeAnswer? answer;
+  SchoolPracticeQuestion withAnswer(SchoolPracticeAnswer value) =>
+      SchoolPracticeQuestion(
+        id: id,
+        classroomId: classroomId,
+        courseVideoId: courseVideoId,
+        chapterNo: chapterNo,
+        lessonTitle: lessonTitle,
+        programmingLanguage: programmingLanguage,
+        title: title,
+        content: content,
+        options: options,
+        correctOption: correctOption,
+        analysis: analysis,
+        difficulty: difficulty,
+        sort: sort,
+        answer: value,
+      );
   final int id;
   final int classroomId;
   final int? courseVideoId;
@@ -705,6 +762,22 @@ class ItClassApi {
     return data
         .map((item) => SchoolPracticeQuestion.fromJson(_asMap(item)))
         .toList();
+  }
+
+  Future<SchoolPracticeAnswer> savePracticeAnswer({
+    required int questionId,
+    required String selectedOption,
+    required bool checkAnswer,
+  }) async {
+    final data = await _post<Map<String, dynamic>>(
+      '/school/practice-question/answer',
+      body: {
+        'questionId': questionId,
+        'selectedOption': selectedOption,
+        'checkAnswer': checkAnswer,
+      },
+    );
+    return SchoolPracticeAnswer.fromJson(data);
   }
 
   Future<int> createCourseVideo({

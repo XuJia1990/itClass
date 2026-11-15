@@ -1114,7 +1114,7 @@ class ItClassApi {
   Future<int> ensureAiConversation([int? classroomId]) async {
     final data = await _post<dynamic>(
       '/school/ai-tutor/conversation/create',
-      body: {'title': 'プログラミングの質問'},
+      body: const {},
     );
     return _asInt(data) ?? 0;
   }

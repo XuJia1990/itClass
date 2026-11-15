@@ -31,7 +31,7 @@ void main() {
 
   group('global AI without a classroom', () {
     test(
-      'uses the configured welcome message and a title-only create',
+      'uses the configured welcome message and lets the server derive the title',
       () async {
         final fixture = _ApiFixture((request) {
           switch (request.url.path) {
@@ -50,15 +50,7 @@ void main() {
                 'POST',
                 '/school/ai-tutor/conversation/create',
               );
-              expect(_body(request).keys, unorderedEquals(['title']));
-              expect(
-                _body(request)['title'],
-                isA<String>().having(
-                  (title) => title.trim(),
-                  'nonempty title',
-                  isNotEmpty,
-                ),
-              );
+              expect(_body(request), isEmpty);
               return _envelope(301);
             default:
               throw StateError('Unexpected request: ${request.url}');

@@ -302,6 +302,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
     return _ResponsiveShell(
       profileName: '${ItClassSession.current?.displayName ?? ''}（学生）',
       profileRole: '学生',
+      profileAvatar: ItClassSession.current?.avatar ?? '',
       activeIndex: StudentSection.values.indexOf(_section),
       items: _studentMenu,
       onSelect: (index) {
@@ -486,6 +487,8 @@ class _StudentHomePageState extends State<StudentHomePage> {
                 _CompactListCard(
                   selected: _selectedLesson == i,
                   title: _videos[i].title,
+                  completed: _progressFor(_videos[i]) >= 1,
+                  badge: _progressFor(_videos[i]) >= 1 ? '視聴完了' : null,
                   subtitle:
                       '${_learningLanguageLabel(_videos[i].category)} · ${(_progressFor(_videos[i]) * 100).round()}%',
                   detail: _videos[i].description,
@@ -503,7 +506,9 @@ class _StudentHomePageState extends State<StudentHomePage> {
                 _CompactListCard(
                   selected: _selectedLesson == i,
                   title: _lessonsForLearning[i].title,
-                  subtitle: _learningLanguageLabel(_lessonsForLearning[i].level),
+                  subtitle: _learningLanguageLabel(
+                    _lessonsForLearning[i].level,
+                  ),
                   detail: _lessonsForLearning[i].summary,
                   onTap: () => setState(() => _selectedLesson = i),
                 ),
@@ -600,6 +605,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
         );
       case StudentSection.settings:
         return _settingsMiddlePanel(
+          includeBasicInfo: false,
           selected: _settingSection,
           onSelect: (section) => setState(() => _settingSection = section),
         );
@@ -663,6 +669,31 @@ class _StudentHomePageState extends State<StudentHomePage> {
           return ListView(
             padding: const EdgeInsets.all(24),
             children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '学習の進捗 · ${videos.where((v) => _progressFor(v) >= 1).length} / ${videos.length}本 視聴完了',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 12),
+                      LinearProgressIndicator(
+                        value:
+                            videos.map(_progressFor).reduce((a, b) => a + b) /
+                            videos.length,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${(videos.map(_progressFor).reduce((a, b) => a + b) / videos.length * 100).round()}%',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
               _VideoProgressCard(
                 key: ValueKey(_videoKey(video)),
                 video: video,
@@ -829,7 +860,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
                 ? '学習コースに担当の先生が登録されると、ここから相談できます。'
                 : 'このコースには現在相談できる先生がいません。ほかの学習言語を選んでください。',
           ),
-        for (final entry in directory)
+        for (final entry in directory) ...[
           KeyedSubtree(
             key: ValueKey('teacher-directory-${entry.key}'),
             child: _CompactListCard(
@@ -853,6 +884,24 @@ class _StudentHomePageState extends State<StudentHomePage> {
               },
             ),
           ),
+          if ('${_selectedChatContact?.accountId}' == entry.key &&
+              entry.conversations.length > 1)
+            for (final contact in entry.conversations)
+              Padding(
+                padding: const EdgeInsets.only(left: 12),
+                child: _CompactListCard(
+                  key: ValueKey(
+                    'teacher-conversation-${contact.conversationId}',
+                  ),
+                  title: _contactResourceLabel(contact),
+                  subtitle: contact.name,
+                  detail: contact.lastQuestion,
+                  selected: contact.conversationId == _chatConversationId,
+                  showNotificationDot: contact.unreadCount > 0,
+                  onTap: () => _selectTeacherContact(contact),
+                ),
+              ),
+        ],
       ],
     );
   }
@@ -899,27 +948,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            TextButton.icon(
-              onPressed: () => setState(() {
-                _showTeacherDirectory = true;
-                _directoryTeacherKey = null;
-              }),
-              icon: const Icon(Icons.arrow_back_rounded),
-              label: const Text('先生一覧'),
-            ),
-            if (selectedTeacher == null &&
-                _selectedChatContact?.accountId != null)
-              TextButton.icon(
-                onPressed: () => setState(() {
-                  _directoryTeacherKey = '${_selectedChatContact!.accountId}';
-                }),
-                icon: const Icon(Icons.history_rounded),
-                label: const Text('会話履歴'),
-              ),
-          ],
-        ),
         if (_directoryCreating) const LinearProgressIndicator(),
         Expanded(
           child: selectedTeacher != null
@@ -1299,6 +1327,18 @@ class _StudentHomePageState extends State<StudentHomePage> {
     final answers = Map<int, String>.of(
       _examExpired ? _savedExamAnswers : _examAnswers,
     );
+    if (!_examExpired &&
+        List.generate(
+          questions.length,
+          (i) => i,
+        ).any((i) => (answers[i] ?? '').trim().isEmpty || answers[i] == '[]')) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('未回答の問題があります。すべての問題に回答してから提出してください。')),
+        );
+      return;
+    }
     setState(() {
       _examSubmitting = true;
       _examError = null;

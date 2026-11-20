@@ -1349,72 +1349,30 @@ void main() {
                 'Entering the directory must wait for an explicit conversation choice.',
           );
 
-          for (final conversationId in [902, 901, 902]) {
-            await _tapAndSettle(
-              tester,
-              find.byKey(const ValueKey('teacher-directory-11')),
-            );
-            expect(find.text('返信: 会話902'), findsOneWidget);
-            await _tapAndSettle(
-              tester,
-              find.widgetWithText(TextButton, '会話履歴'),
-            );
-            final video = find.byKey(
-              const ValueKey('teacher-conversation-901'),
-            );
-            final document = find.byKey(
-              const ValueKey('teacher-conversation-902'),
-            );
-            expect(video, findsOneWidget);
-            expect(document, findsOneWidget);
-            expect(
-              find.descendant(
-                of: video,
-                matching: find.textContaining('公開Python動画'),
-              ),
-              findsWidgets,
-            );
-            expect(
-              find.descendant(
-                of: document,
-                matching: find.textContaining('公開TypeScript教材'),
-              ),
-              findsWidgets,
-            );
-            expect(find.text('チャットに戻る'), findsOneWidget);
-            expect(fixture.consultations, isEmpty);
-
+          await _tapAndSettle(
+            tester,
+            find.byKey(const ValueKey('teacher-directory-11')),
+          );
+          expect(find.text('返信: 会話902'), findsOneWidget);
+          expect(find.widgetWithText(TextButton, '先生一覧'), findsNothing);
+          expect(find.widgetWithText(TextButton, '会話履歴'), findsNothing);
+          for (final conversationId in [901, 902]) {
+            if (viewport.size.width < 720) {
+              await _tapAndSettle(tester, find.byTooltip('一覧・絞り込み'));
+            }
             await _tapAndSettle(
               tester,
               find.byKey(ValueKey('teacher-conversation-$conversationId')),
             );
-            expect(fixture.readConversationIds.last, conversationId);
+            if (viewport.size.width < 720) {
+              await _tapAndSettle(tester, find.byTooltip('一覧を閉じる'));
+            }
             expect(find.text('返信: 会話$conversationId'), findsOneWidget);
-            expect(
-              find.text('返信: 会話${conversationId == 901 ? 902 : 901}'),
-              findsNothing,
-            );
-            expect(
-              fixture.consultations,
-              isEmpty,
-              reason:
-                  'Existing conversations must open by their own ID, not create another chat.',
-            );
-            await _tapAndSettle(
-              tester,
-              find.widgetWithText(TextButton, '先生一覧'),
-            );
+            expect(fixture.consultations, isEmpty);
           }
-          expect(fixture.readConversationIds, [902, 902, 902, 901, 902, 902]);
+          expect(fixture.readConversationIds, [902, 901, 902]);
           expect(fixture.conversations.keys, unorderedEquals([901, 902]));
-          expect(
-            find.byKey(const ValueKey('teacher-directory-11')),
-            findsOneWidget,
-          );
-          expect(
-            find.byKey(const ValueKey('teacher-directory-12')),
-            findsOneWidget,
-          );
+
           expect(tester.takeException(), isNull);
           await tester.pumpWidget(const SizedBox.shrink());
         },
@@ -1449,6 +1407,12 @@ void main() {
         expect(find.text('Pythonのリストを選んでください。'), findsOneWidget);
         expect(find.textContaining('残り '), findsNothing);
         expect(find.text('テストを提出'), findsOneWidget);
+        await _tapAndSettle(tester, find.text('テストを提出'));
+        expect(find.text('未回答の問題があります。すべての問題に回答してから提出してください。'), findsOneWidget);
+        expect(
+          fixture.requests.where((r) => r.url.path.endsWith('/exam/submit')),
+          isEmpty,
+        );
         await _tapAndSettle(tester, find.text('A. [1, 2]'));
         await _selectStudentSection(tester, 'テスト');
         expect(

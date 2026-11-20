@@ -35,6 +35,7 @@ void main() {
       'api-dev.tw-onlineschool.com cannot be resolved',
       'cn.iocoder.yudao.module.school.ServiceException',
       '{"accessToken":"hidden-token"}',
+      '请求参数不正确:不能为空',
     ]) {
       expect(
         userFacingError(ApiException(detail, code: 1004002045)),

@@ -72,6 +72,7 @@ void main() {
           ...?stored[owner],
           'questionId': body['questionId'],
           'selectedOption': body['selectedOption'],
+          'selectionChecked': body['checkAnswer'],
           'updateTime':
               '2026-11-15T10:00:${(++revision).toString().padLeft(2, '0')}',
           if (body['checkAnswer'] == true) ...{
@@ -133,6 +134,8 @@ void main() {
       expect(find.text('選択を保存済み・未確認'), findsOneWidget);
       await tap(t, '解答を確認');
       expect(find.text('不正解・保存済み'), findsOneWidget);
+      expect(find.byIcon(Icons.cancel_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.check_circle_rounded), findsNothing);
       expect(find.textContaining('1/1問確認済み'), findsWidgets);
       await tap(t, 'バイトコードを実行');
       expect(find.textContaining('前回の確認：A · 不正解'), findsOneWidget);
@@ -196,6 +199,22 @@ void main() {
       await t.pump(const Duration(minutes: 1));
       expect(writes.length, count);
       expect(t.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'reselecting the old answer restores only one unchecked selection',
+    (t) async {
+      await open(t);
+      await tap(t, 'PDFを表示');
+      await tap(t, '解答を確認');
+      await tap(t, 'バイトコードを実行');
+      await tap(t, 'PDFを表示');
+      await open(t);
+      expect(find.text('選択を保存済み・未確認'), findsOneWidget);
+      expect(find.byIcon(Icons.radio_button_checked_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.cancel_rounded), findsNothing);
+      expect(find.text('もう一度確認しましょう'), findsNothing);
+      expect(find.textContaining('前回の確認：A'), findsOneWidget);
     },
   );
 }

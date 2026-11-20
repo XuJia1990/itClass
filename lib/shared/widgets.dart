@@ -4,6 +4,7 @@ class _ResponsiveShell extends StatelessWidget {
   const _ResponsiveShell({
     required this.profileName,
     required this.profileRole,
+    this.profileAvatar = '',
     required this.items,
     required this.activeIndex,
     required this.onSelect,
@@ -15,6 +16,7 @@ class _ResponsiveShell extends StatelessWidget {
 
   final String profileName;
   final String profileRole;
+  final String profileAvatar;
   final List<MenuItem> items;
   final int activeIndex;
   final ValueChanged<int> onSelect;
@@ -38,6 +40,7 @@ class _ResponsiveShell extends StatelessWidget {
                 _SideMenu(
                   profileName: profileName,
                   profileRole: profileRole,
+                  profileAvatar: profileAvatar,
                   items: items,
                   notificationIndices: notificationIndices,
                   activeIndex: activeIndex,
@@ -80,6 +83,7 @@ class _ResponsiveShell extends StatelessWidget {
             child: _SideMenu(
               profileName: profileName,
               profileRole: profileRole,
+              profileAvatar: profileAvatar,
               items: items,
               notificationIndices: notificationIndices,
               activeIndex: activeIndex,
@@ -131,6 +135,7 @@ class _SideMenu extends StatelessWidget {
   const _SideMenu({
     required this.profileName,
     required this.profileRole,
+    this.profileAvatar = '',
     required this.items,
     required this.activeIndex,
     required this.onSelect,
@@ -141,6 +146,7 @@ class _SideMenu extends StatelessWidget {
 
   final String profileName;
   final String profileRole;
+  final String profileAvatar;
   final List<MenuItem> items;
   final int activeIndex;
   final ValueChanged<int> onSelect;
@@ -171,10 +177,18 @@ class _SideMenu extends StatelessWidget {
                       color: _AppPalette.ink,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(
-                      Icons.school_rounded,
-                      color: Colors.white,
-                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: profileAvatar.trim().isEmpty
+                        ? const Icon(Icons.school_rounded, color: Colors.white)
+                        : Image.network(
+                            profileAvatar,
+                            key: ValueKey('sidebar-avatar-$profileAvatar'),
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, error, stack) => const Icon(
+                              Icons.school_rounded,
+                              color: Colors.white,
+                            ),
+                          ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -399,11 +413,13 @@ class _HistoryPanel extends StatelessWidget {
 
 class _CompactListCard extends StatelessWidget {
   const _CompactListCard({
+    super.key,
     required this.title,
     required this.subtitle,
     required this.detail,
     required this.onTap,
     this.selected = false,
+    this.completed = false,
     this.badge,
     this.showNotificationDot = false,
     this.notificationLabel = '未読メッセージあり',
@@ -414,6 +430,7 @@ class _CompactListCard extends StatelessWidget {
   final String detail;
   final VoidCallback onTap;
   final bool selected;
+  final bool completed;
   final String? badge;
   final bool showNotificationDot;
   final String notificationLabel;
@@ -424,10 +441,16 @@ class _CompactListCard extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: selected ? _AppPalette.wash : Colors.white,
+          color: completed
+              ? const Color(0xFFECFDF3)
+              : selected
+              ? _AppPalette.wash
+              : Colors.white,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: selected
+            color: completed
+                ? const Color(0xFF16A34A)
+                : selected
                 ? _AppPalette.teal.withValues(alpha: 0.28)
                 : _AppPalette.line,
           ),
@@ -442,6 +465,14 @@ class _CompactListCard extends StatelessWidget {
               children: [
                 Row(
                   children: [
+                    if (completed) ...[
+                      const Icon(
+                        Icons.check_circle_rounded,
+                        color: Color(0xFF16A34A),
+                        size: 18,
+                      ),
+                      const SizedBox(width: 6),
+                    ],
                     Expanded(
                       child: Text(
                         title,
@@ -699,6 +730,13 @@ class _CodeScoringWorkspaceState extends State<_CodeScoringWorkspace> {
         const SizedBox(height: 16),
         _CodeAssignmentBrief(assignment: widget.assignment),
         const SizedBox(height: 16),
+        if (widget.assignment.level.trim().toUpperCase() == 'PHP') ...[
+          const Text(
+            '「<?php」はPHPコードの開始タグです。その下に回答コードを記入してください。',
+            style: TextStyle(color: _AppPalette.muted),
+          ),
+          const SizedBox(height: 8),
+        ],
         TextField(
           controller: widget.controller,
           onChanged: (_) {
@@ -1078,7 +1116,8 @@ class _LearningWorkspaceState extends State<_LearningWorkspace> {
           _SectionHeader(
             icon: Icons.menu_book_rounded,
             title: lesson.title,
-            subtitle: '${_learningLanguageLabel(lesson.level)} · ${lesson.summary}',
+            subtitle:
+                '${_learningLanguageLabel(lesson.level)} · ${lesson.summary}',
           ),
           const SizedBox(height: 16),
           Card(
@@ -1324,8 +1363,10 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
   Widget build(BuildContext context) {
     final video = _loadedVideo ?? widget.video;
     final percent = (_displayProgress * 100).round();
+    final completed = _displayProgress >= 1;
 
     return Card(
+      color: completed ? const Color(0xFFECFDF3) : null,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -1341,9 +1382,13 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
                     color: _AppPalette.washBlue,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(
-                    Icons.play_arrow_rounded,
-                    color: _AppPalette.sky,
+                  child: Icon(
+                    completed
+                        ? Icons.check_circle_rounded
+                        : Icons.play_arrow_rounded,
+                    color: completed
+                        ? const Color(0xFF16A34A)
+                        : _AppPalette.sky,
                     size: 34,
                   ),
                 ),
@@ -1376,7 +1421,7 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  '$percent%',
+                  completed ? '視聴完了 · 100%' : '$percent%',
                   style: const TextStyle(fontWeight: FontWeight.w900),
                 ),
               ],
@@ -2147,6 +2192,7 @@ class _PracticeQuestionCardState extends State<_PracticeQuestionCard> {
     final checked =
         !_saving &&
         _answer?.hasResult == true &&
+        _answer?.currentSelectionChecked == true &&
         _answer?.checkedOption == _selected;
     final correctOption = checked
         ? _answer!.correctOption
@@ -2233,7 +2279,7 @@ class _PracticeQuestionCardState extends State<_PracticeQuestionCard> {
                 message: '正解：${_answer!.correctOption}\n${_answer!.analysis}',
               ),
             ],
-            if (hasResult) ...[
+            if (hasResult && !checked) ...[
               const SizedBox(height: 10),
               Text(
                 '前回の確認：${_answer!.checkedOption} · ${_answer!.correct! ? '正解' : '不正解'} · $timeLabel',
@@ -2263,7 +2309,7 @@ class _PracticeOptionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isCorrect = checked && option.key == correctOption;
+    final isCorrect = checked && selected && option.key == correctOption;
     final isWrong = checked && selected && !isCorrect;
     final borderColor = isCorrect
         ? const Color(0xFF16A34A)
@@ -4080,6 +4126,7 @@ class _UserRoleCard extends StatelessWidget {
 Widget _settingsMiddlePanel({
   required ProfileSettingSection selected,
   required ValueChanged<ProfileSettingSection> onSelect,
+  bool includeBasicInfo = true,
 }) {
   return _HistoryPanel(
     title: '設定項目',
@@ -4112,13 +4159,14 @@ Widget _settingsMiddlePanel({
         detail: '学校アカウントの電話番号を変更します。',
         onTap: () => onSelect(ProfileSettingSection.contact),
       ),
-      _CompactListCard(
-        selected: selected == ProfileSettingSection.basicInfo,
-        title: 'アカウント情報',
-        subtitle: 'プログラミング言語',
-        detail: 'オンライン教室アカウントの学習言語を変更します。',
-        onTap: () => onSelect(ProfileSettingSection.basicInfo),
-      ),
+      if (includeBasicInfo)
+        _CompactListCard(
+          selected: selected == ProfileSettingSection.basicInfo,
+          title: 'アカウント情報',
+          subtitle: 'プログラミング言語',
+          detail: 'オンライン教室アカウントの学習言語を変更します。',
+          onTap: () => onSelect(ProfileSettingSection.basicInfo),
+        ),
     ],
   );
 }
@@ -4339,6 +4387,13 @@ class _ProfileSettingsWorkspaceState extends State<_ProfileSettingsWorkspace>
   }
 
   Future<void> _saveProfile() async {
+    if (widget.section == ProfileSettingSection.contact &&
+        _phoneController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('連絡先（電話番号）を入力してください。')));
+      return;
+    }
     if (widget.section == ProfileSettingSection.password &&
         _passwordController.text.length < 4) {
       ScaffoldMessenger.of(

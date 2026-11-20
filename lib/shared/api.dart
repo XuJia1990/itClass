@@ -366,6 +366,7 @@ class SchoolPracticeAnswer {
     this.analysis = '',
     this.checkedAt,
     this.updateTime,
+    this.selectionChecked,
   });
 
   factory SchoolPracticeAnswer.fromJson(Map<String, dynamic> json) =>
@@ -378,6 +379,7 @@ class SchoolPracticeAnswer {
         analysis: _asString(json['analysis']),
         checkedAt: _asDateTime(json['checkedAt']),
         updateTime: _asDateTime(json['updateTime']),
+        selectionChecked: json['selectionChecked'] as bool?,
       );
   final int questionId;
   final String selectedOption;
@@ -387,6 +389,9 @@ class SchoolPracticeAnswer {
   final String analysis;
   final DateTime? checkedAt;
   final DateTime? updateTime;
+  final bool? selectionChecked;
+  bool get currentSelectionChecked =>
+      selectionChecked ?? (hasResult && checkedOption == selectedOption);
   bool get hasResult =>
       checkedOption != null && correct != null && checkedAt != null;
 }
@@ -970,13 +975,14 @@ class ItClassApi {
         'attemptId': attemptId,
         'answers': [
           for (var i = 0; i < questions.length; i++)
-            if (questions[i].paperQuestionId != null &&
-                (selectedAnswers[i] != null || writtenAnswers[i] != null))
+            if (questions[i].paperQuestionId != null)
               {
                 'paperQuestionId': questions[i].paperQuestionId,
                 'answerContent':
                     writtenAnswers[i] ??
-                    _answerContent(questions[i], selectedAnswers[i]!),
+                    (selectedAnswers[i] == null
+                        ? ''
+                        : _answerContent(questions[i], selectedAnswers[i]!)),
               },
         ],
       },

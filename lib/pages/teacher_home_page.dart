@@ -62,6 +62,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     return _ResponsiveShell(
       profileName: '${ItClassSession.current?.displayName ?? ''}（先生）',
       profileRole: '先生',
+      profileAvatar: ItClassSession.current?.avatar ?? '',
       activeIndex: TeacherSection.values.indexOf(_section),
       items: _teacherMenu,
       notificationIndices: {

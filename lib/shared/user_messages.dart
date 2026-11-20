@@ -8,6 +8,7 @@ String userFacingError(Object error) {
     return '接続できませんでした。通信状態を確認してもう一度お試しください。';
   }
   if (error is! ApiException) return fallback;
+  if (error.code == 400) return '入力内容を確認して、もう一度お試しください。';
   if (error.code == 401) return 'ログインの有効期限が切れました。再度ログインしてください。';
   if (error.code == 403) return 'この操作を行う権限がありません。';
   if (error.code == 429) return '操作が集中しています。少し待ってからもう一度お試しください。';
@@ -24,6 +25,7 @@ String userFacingError(Object error) {
 }
 
 final _technicalErrorText = RegExp(
+  r'请求参数|不能为?空|参数不正确|参数错误|参数校验|必填|validation failed|must not be (?:null|blank|empty)|'
   r'(?:https?|wss?)://|\b(?:localhost|api|backend|twcschool|twschool|HTTP|SQL|SQLSTATE|JDBC|JSON|URI|URL|CORS|XML|HTML|trace|stack|token|authorization)\b|'
   r'/(?:app-api|admin-api|school|member|infra|system|Users|var|tmp|etc)/?|'
   r'TWSCHOOL_|app-config|バックエンド|(?:\w+Exception|\w+Error)\b|'

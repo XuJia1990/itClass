@@ -628,6 +628,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
               ),
             Expanded(
               child: _ChatWorkspace(
+                historyKey: ('ai', _aiConversationId, _aiRequestId),
                 title: 'AI会話',
                 emptyHint: '例：HashMap と ArrayList の違いは何ですか？',
                 messages: _aiMessages,
@@ -1018,6 +1019,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
       );
     }
     return _ChatWorkspace(
+      historyKey: ('teacher', _chatConversationId),
       title: '先生に質問：${contact.name}',
       emptyHint: '先生に学習について質問できます。',
       messages: _teacherMessages,
@@ -1276,8 +1278,16 @@ class _StudentHomePageState extends State<StudentHomePage> {
       return '結果 ${_examResult!.totalScore.round()}点';
     }
     if (_examSubmitted) return '提出済み';
-    if (_savedExamAnswers.isEmpty) return null;
-    return '保存 ${_savedExamAnswers.length}/${_apiExamQuestions.length}';
+    final savedCount = _apiExamQuestions.indexed
+        .where(
+          (entry) => _examAnswerIsSaved(
+            entry.$2,
+            _examAnswers[entry.$1],
+            _savedExamAnswers[entry.$1],
+          ),
+        )
+        .length;
+    return '保存 $savedCount/${_apiExamQuestions.length}';
   }
 
   Future<void> _saveBackendExamAnswer(int index) async {
@@ -1316,29 +1326,32 @@ class _StudentHomePageState extends State<StudentHomePage> {
 
   Future<void> _submitSelectedExam() async {
     final attemptId = _examAttemptId;
-    if (attemptId == null ||
-        _examSubmitting ||
-        _examSubmitted ||
-        _savingExamAnswers.isNotEmpty) {
+    if (attemptId == null || _examSubmitting || _examSubmitted) {
       return;
     }
     final questions = List<ExamQuestion>.of(_apiExamQuestions);
-    // After the server deadline only previously saved answers may be submitted.
-    final answers = Map<int, String>.of(
-      _examExpired ? _savedExamAnswers : _examAnswers,
-    );
-    if (!_examExpired &&
-        List.generate(
-          questions.length,
-          (i) => i,
-        ).any((i) => (answers[i] ?? '').trim().isEmpty || answers[i] == '[]')) {
+    // Submission never doubles as saving: every current answer must already
+    // have been acknowledged by the save-answer endpoint.
+    if (_savingExamAnswers.isNotEmpty ||
+        questions.indexed.any(
+          (entry) => !_examAnswerIsSaved(
+            entry.$2,
+            _examAnswers[entry.$1],
+            _savedExamAnswers[entry.$1],
+          ),
+        )) {
       ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
+        ..clearSnackBars()
         ..showSnackBar(
-          const SnackBar(content: Text('未回答の問題があります。すべての問題に回答してから提出してください。')),
+          const SnackBar(
+            content: Text(_examUnsavedMessage),
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 6),
+          ),
         );
       return;
     }
+    final answers = Map<int, String>.of(_savedExamAnswers);
     setState(() {
       _examSubmitting = true;
       _examError = null;
@@ -1363,7 +1376,9 @@ class _StudentHomePageState extends State<StudentHomePage> {
       await _refreshExamResult();
     } catch (error) {
       if (!mounted || attemptId != _examAttemptId) return;
-      final message = '提出に失敗しました：${userFacingError(error)}';
+      final message = error is ApiException && error.code == 1004002055
+          ? _examUnsavedMessage
+          : '提出に失敗しました：${userFacingError(error)}';
       setState(() => _examError = message);
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
@@ -2083,6 +2098,24 @@ class _StudentPracticeWorkspace extends StatelessWidget {
   );
 }
 
+const _examUnsavedMessage = '未回答の問題があります。すべての問題に回答してから提出してください。';
+
+bool _examAnswerIsSaved(ExamQuestion question, String? draft, String? saved) {
+  if (draft == null || draft.trim().isEmpty || saved != draft) return false;
+  if (question.options.isNotEmpty) {
+    try {
+      final value = jsonDecode(draft);
+      if (value is List) {
+        return value.isNotEmpty &&
+            value.every((key) => '$key'.trim().isNotEmpty);
+      }
+    } catch (_) {
+      // Single-choice answers are plain option keys.
+    }
+  }
+  return true;
+}
+
 class _StudentExamWorkspace extends StatefulWidget {
   const _StudentExamWorkspace({
     super.key,
@@ -2237,14 +2270,19 @@ class _StudentExamWorkspaceState extends State<_StudentExamWorkspace> {
         ],
         const SizedBox(height: 16),
         for (var i = 0; i < widget.questions.length; i++) _questionCard(i),
-        if (!widget.submitted)
+        if (!widget.submitted) ...[
+          Text(
+            '保存済み ${widget.questions.indexed.where((entry) => _examAnswerIsSaved(entry.$2, widget.answers[entry.$1], widget.savedAnswers[entry.$1])).length} / ${widget.questions.length}問',
+          ),
+          const SizedBox(height: 8),
+          const Text('すべての問題で「回答を保存」を押してから提出してください。'),
+          const SizedBox(height: 12),
           FilledButton.icon(
-            onPressed: widget.submitting || widget.savingAnswers.isNotEmpty
-                ? null
-                : widget.onSubmit,
+            onPressed: widget.submitting ? null : widget.onSubmit,
             icon: const Icon(Icons.send_outlined),
             label: Text(widget.submitting ? '提出中…' : 'テストを提出'),
           ),
+        ],
       ],
     );
   }
@@ -2253,9 +2291,11 @@ class _StudentExamWorkspaceState extends State<_StudentExamWorkspace> {
     final question = widget.questions[index];
     final answer = widget.answers[index] ?? '';
     final selected = _selectedKeys(answer);
-    final saved =
-        widget.savedAnswers.containsKey(index) &&
-        widget.savedAnswers[index] == answer;
+    final saved = _examAnswerIsSaved(
+      question,
+      answer,
+      widget.savedAnswers[index],
+    );
     final saving = widget.savingAnswers.contains(index);
     final feedback = widget.result?.answerFor(question.paperQuestionId);
     return Card(

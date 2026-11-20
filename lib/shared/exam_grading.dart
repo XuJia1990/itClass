@@ -806,14 +806,33 @@ class _TeacherExamTrialPageState extends State<_TeacherExamTrialPage> {
   }
 
   Future<void> _submit() async {
-    if (_busy || _submitted || _attempt == null || _saving.isNotEmpty) return;
+    if (_busy || _submitted || _attempt == null) return;
+    if (_saving.isNotEmpty ||
+        _attempt!.questions.indexed.any(
+          (entry) => !_examAnswerIsSaved(
+            entry.$2,
+            _answers[entry.$1],
+            _saved[entry.$1],
+          ),
+        )) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(_examUnsavedMessage),
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 6),
+          ),
+        );
+      return;
+    }
     setState(() => _busy = true);
     try {
       await ItClassApi.instance.submitExam(
         attemptId: _attempt!.attemptId,
         questions: _attempt!.questions,
         selectedAnswers: const {},
-        writtenAnswers: _answers,
+        writtenAnswers: Map<int, String>.of(_saved),
       );
       if (!mounted) return;
       setState(() => _submitted = true);

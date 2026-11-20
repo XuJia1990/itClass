@@ -531,8 +531,82 @@ class _CompactListCard extends StatelessWidget {
   }
 }
 
+// Chat history is laid out before scrolling, so long/wrapped messages have an
+// exact bottom offset. Opening a conversation always shows the newest message;
+// ordinary rebuilds and reading older history retain the reader's position.
+class _ChatHistoryView extends StatefulWidget {
+  const _ChatHistoryView({
+    required this.historyKey,
+    required this.latestRevision,
+    required this.children,
+  });
+
+  final Object? historyKey;
+  final Object? latestRevision;
+  final List<Widget> children;
+
+  @override
+  State<_ChatHistoryView> createState() => _ChatHistoryViewState();
+}
+
+class _ChatHistoryViewState extends State<_ChatHistoryView> {
+  final _scroll = ScrollController(keepScrollOffset: false);
+  bool _pendingScroll = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollToLatest();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ChatHistoryView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final nearLatest = !_scroll.hasClients || _scroll.position.extentAfter < 80;
+    if (oldWidget.historyKey != widget.historyKey ||
+        (oldWidget.latestRevision != widget.latestRevision && nearLatest)) {
+      _scrollToLatest();
+    }
+  }
+
+  void _scrollToLatest() {
+    if (_pendingScroll) return;
+    _pendingScroll = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _pendingScroll = false;
+      if (mounted && _scroll.hasClients) {
+        _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+    key: const ValueKey('chat-history-scroll'),
+    controller: _scroll,
+    padding: const EdgeInsets.all(24),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: widget.children,
+    ),
+  );
+}
+
+Object? _latestChatRevision(List<ChatMessage> messages) {
+  if (messages.isEmpty) return null;
+  final last = messages.last;
+  return (last.id, last.text, messages.length);
+}
+
 class _ChatWorkspace extends StatelessWidget {
   const _ChatWorkspace({
+    required this.historyKey,
     required this.title,
     required this.emptyHint,
     required this.messages,
@@ -542,6 +616,7 @@ class _ChatWorkspace extends StatelessWidget {
     this.peerName = '',
   });
 
+  final Object historyKey;
   final String title;
   final String emptyHint;
   final List<ChatMessage> messages;
@@ -555,8 +630,9 @@ class _ChatWorkspace extends StatelessWidget {
     return Column(
       children: [
         Expanded(
-          child: ListView(
-            padding: const EdgeInsets.all(24),
+          child: _ChatHistoryView(
+            historyKey: historyKey,
+            latestRevision: _latestChatRevision(messages),
             children: [
               _SectionHeader(
                 icon: Icons.forum_rounded,
@@ -2502,8 +2578,9 @@ class _TeacherRequestWorkspace extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(24),
+    return _ChatHistoryView(
+      historyKey: request.questionId,
+      latestRevision: _latestChatRevision(request.teacherReplies),
       children: [
         _SectionHeader(
           icon: Icons.support_agent_rounded,
@@ -2623,8 +2700,13 @@ class _TeacherChatWorkspaceState extends State<_TeacherChatWorkspace>
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(24),
+    return _ChatHistoryView(
+      historyKey: (widget.student.conversationId, _loadGeneration),
+      latestRevision: (
+        _loading,
+        _messages.lastOrNull?.id,
+        _messages.lastOrNull?.text,
+      ),
       children: [
         _SectionHeader(
           icon: Icons.chat_bubble_rounded,

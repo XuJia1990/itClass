@@ -17,20 +17,3 @@ const _teacherMenu = [
   MenuItem(Icons.admin_panel_settings_rounded, 'システム管理', Color(0xFF22C55E)),
   MenuItem(Icons.settings_rounded, '設定', Color(0xFF475569)),
 ];
-
-String _teacherTitle(TeacherSection section) {
-  switch (section) {
-    case TeacherSection.pendingAi:
-      return '学生のAI質問対応';
-    case TeacherSection.codeScoring:
-      return '成績確認';
-    case TeacherSection.studentMessages:
-      return '学生チャット';
-    case TeacherSection.relearning:
-      return '教材・テストアップロード';
-    case TeacherSection.system:
-      return 'システム管理';
-    case TeacherSection.settings:
-      return '設定';
-  }
-}

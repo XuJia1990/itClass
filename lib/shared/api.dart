@@ -1464,19 +1464,20 @@ class ItClassApi {
     late final http.Response response;
     try {
       final stopwatch = Stopwatch()..start();
+      final timeout = path == '/school/code-scoring/score'
+          ? const Duration(seconds: 120)
+          : const Duration(seconds: 20);
       switch (method) {
         case 'GET':
-          response = await _client
-              .get(uri, headers: headers)
-              .timeout(const Duration(seconds: 20));
+          response = await _client.get(uri, headers: headers).timeout(timeout);
         case 'PUT':
           response = await _client
               .put(uri, headers: headers, body: encodedBody ?? '{}')
-              .timeout(const Duration(seconds: 20));
+              .timeout(timeout);
         default:
           response = await _client
               .post(uri, headers: headers, body: encodedBody ?? '{}')
-              .timeout(const Duration(seconds: 20));
+              .timeout(timeout);
       }
       stopwatch.stop();
       _logResponse(response, elapsed: stopwatch.elapsed);
@@ -2046,7 +2047,7 @@ CodeAssignment _codeAssignmentFromJson(Map<String, dynamic> json) {
     id: _asInt(json['id']),
     title: _asString(json['title'], fallback: 'Code Assignment'),
     level: _asString(json['level']),
-    status: _asString(json['status'], fallback: 'コード課題'),
+    status: _asString(json['status'], fallback: '練習'),
     summary: _asString(json['summary']),
     prompt: _asString(json['prompt']),
     requirements: _asList(
@@ -2065,6 +2066,7 @@ ScoreResult _scoreResultFromJson(Map<String, dynamic> json) {
     score: _asInt(json['score']) ?? 0,
     examTitle: _asString(json['examTitle'], fallback: 'Code Assignment'),
     examDate: _asString(json['examDate']),
+    gradingMethod: _asString(json['gradingMethod']),
     correctItems: _asList(
       json['correctItems'],
     ).map((item) => _asString(item)).where((item) => item.isNotEmpty).toList(),

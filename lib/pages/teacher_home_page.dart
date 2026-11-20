@@ -60,8 +60,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   @override
   Widget build(BuildContext context) {
     return _ResponsiveShell(
-      title: _teacherTitle(_section),
-      subtitle: '先生画面：質問対応、成績確認、学習資料管理、ユーザー管理',
       profileName: '${ItClassSession.current?.displayName ?? ''}（先生）',
       profileRole: '先生',
       activeIndex: TeacherSection.values.indexOf(_section),
@@ -91,7 +89,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         revision: _navigationRevision,
         child: _teacherContent(),
       ),
-      topActions: const [],
     );
   }
 

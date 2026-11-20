@@ -274,6 +274,7 @@ class ExamQuestion {
 
 class ScoreResult {
   const ScoreResult({
+    this.gradingMethod = '',
     required this.score,
     required this.examTitle,
     required this.examDate,
@@ -284,6 +285,7 @@ class ScoreResult {
   });
 
   final int score;
+  final String gradingMethod;
   final String examTitle;
   final String examDate;
   final List<String> correctItems;

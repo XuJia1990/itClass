@@ -638,7 +638,9 @@ void main() {
       final fixture = _ApiFixture((request) {
         switch (request.url.path) {
           case '/app-api/school/classroom/my-list':
-            return _envelope([{'id': 5, 'name': 'Python', 'programmingLanguage': 'Python'}]);
+            return _envelope([
+              {'id': 5, 'name': 'Python', 'programmingLanguage': 'Python'},
+            ]);
           case '/app-api/school/classroom/available-list':
           case '/app-api/school/account/student/list-simple':
             expect(request.method, 'GET');
@@ -660,7 +662,11 @@ void main() {
               request,
               'GET',
               '/school/course-video/teacher-page',
-              query: {'pageNo': '1', 'pageSize': '20', 'programmingLanguages': 'Python'},
+              query: {
+                'pageNo': '1',
+                'pageSize': '20',
+                'programmingLanguages': 'Python',
+              },
             );
             return _envelope(
               _page([
@@ -1199,43 +1205,43 @@ void main() {
       testWidgets(
         'teacher directory opens a direct chat without choosing a resource',
         (tester) async {
-        final fixture = _StudentApiFixture(
-          videos: [
-            _videoJson,
-            {..._videoJson, 'id': 102, 'title': 'Python応用動画'},
-          ],
-          documents: [
-            {
-              ..._documentJson,
-              'teachers': [
-                // The same school account can carry an older display name
-                // on another resource. Identity must not depend on the name.
-                {..._teachersJson.first, 'realName': 'A先生（旧表示名）'},
-                _teachersJson.last,
-              ],
-            },
-          ],
-          exams: const [],
-        );
-        await _mountStudent(tester, fixture, viewport.size);
-        await _selectStudentSection(tester, 'AI教室');
-        await _tapAndSettle(
-          tester,
-          find.byType(DropdownButtonFormField<String>),
-        );
-        await _tapAndSettle(tester, find.text('Python').last);
-        await _selectStudentSection(tester, '先生に質問');
+          final fixture = _StudentApiFixture(
+            videos: [
+              _videoJson,
+              {..._videoJson, 'id': 102, 'title': 'Python応用動画'},
+            ],
+            documents: [
+              {
+                ..._documentJson,
+                'teachers': [
+                  // The same school account can carry an older display name
+                  // on another resource. Identity must not depend on the name.
+                  {..._teachersJson.first, 'realName': 'A先生（旧表示名）'},
+                  _teachersJson.last,
+                ],
+              },
+            ],
+            exams: const [],
+          );
+          await _mountStudent(tester, fixture, viewport.size);
+          await _selectStudentSection(tester, 'AI教室');
+          await _tapAndSettle(
+            tester,
+            find.byType(DropdownButtonFormField<String>),
+          );
+          await _tapAndSettle(tester, find.text('Python').last);
+          await _selectStudentSection(tester, '先生に質問');
 
-        final directorySubtitle = find.text('すべての学習言語の担当の先生です。先生を選んで相談できます。');
-        final languageFilter = find.byType(DropdownButtonFormField<String>);
-        expect(directorySubtitle, findsOneWidget);
-        expect(languageFilter, findsOneWidget);
-        expect(
-          tester.getTopLeft(languageFilter).dy -
-              tester.getBottomLeft(directorySubtitle).dy,
-          greaterThanOrEqualTo(16),
-          reason: '窄い画面で副題が折り返しても絞り込み欄と重ならない。',
-        );
+          final directorySubtitle = find.text('すべての学習言語の担当の先生です。先生を選んで相談できます。');
+          final languageFilter = find.byType(DropdownButtonFormField<String>);
+          expect(directorySubtitle, findsOneWidget);
+          expect(languageFilter, findsOneWidget);
+          expect(
+            tester.getTopLeft(languageFilter).dy -
+                tester.getBottomLeft(directorySubtitle).dy,
+            greaterThanOrEqualTo(16),
+            reason: '窄い画面で副題が折り返しても絞り込み欄と重ならない。',
+          );
 
           for (final teacher in [
             (id: 11, name: 'A先生'),
@@ -1244,75 +1250,75 @@ void main() {
             final card = find.byKey(
               ValueKey('teacher-directory-${teacher.id}'),
             );
-          expect(
-            card,
-            findsOneWidget,
-            reason:
-                'Repeated video/document assignments must produce one card per accountId.',
-          );
-          expect(
-            find.descendant(
+            expect(
+              card,
+              findsOneWidget,
+              reason:
+                  'Repeated video/document assignments must produce one card per accountId.',
+            );
+            expect(
+              find.descendant(
+                of: card,
+                matching: find.textContaining(teacher.name),
+              ),
+              findsOneWidget,
+            );
+            final languages = find.descendant(
               of: card,
-              matching: find.textContaining(teacher.name),
+              matching: find.textContaining('担当言語：'),
+            );
+            expect(languages, findsOneWidget);
+            final label = tester.widget<Text>(languages).data!;
+            expect(label, contains('Python'));
+            expect(
+              label,
+              contains('TypeScript'),
+              reason:
+                  'The learning filter must not hide other responsible languages.',
+            );
+            expect(RegExp('Python').allMatches(label), hasLength(1));
+            expect(label, isNot(contains('Java')));
+            expect(
+              card.hitTestable(),
+              findsOneWidget,
+              reason:
+                  'The initial mobile directory must be usable without opening a drawer.',
+            );
+          }
+          expect(
+            find.byKey(const ValueKey('teacher-directory-999')),
+            findsNothing,
+          );
+          expect(fixture.conversations, isEmpty);
+          expect(fixture.consultations, isEmpty);
+          expect(fixture.readConversationIds, isEmpty);
+          expect(
+            fixture.requests.where(
+              (request) => request.url.path.endsWith('/resource/teachers'),
             ),
-            findsOneWidget,
-          );
-          final languages = find.descendant(
-            of: card,
-            matching: find.textContaining('担当言語：'),
-          );
-          expect(languages, findsOneWidget);
-          final label = tester.widget<Text>(languages).data!;
-          expect(label, contains('Python'));
-          expect(
-            label,
-            contains('TypeScript'),
+            isEmpty,
             reason:
-                'The learning filter must not hide other responsible languages.',
+                'The directory must use the independent course teacher list.',
           );
-          expect(RegExp('Python').allMatches(label), hasLength(1));
-          expect(label, isNot(contains('Java')));
-          expect(
-            card.hitTestable(),
-            findsOneWidget,
-            reason:
-                'The initial mobile directory must be usable without opening a drawer.',
-          );
-        }
-        expect(
-          find.byKey(const ValueKey('teacher-directory-999')),
-          findsNothing,
-        );
-        expect(fixture.conversations, isEmpty);
-        expect(fixture.consultations, isEmpty);
-        expect(fixture.readConversationIds, isEmpty);
-        expect(
-          fixture.requests.where(
-            (request) => request.url.path.endsWith('/resource/teachers'),
-          ),
-          isEmpty,
-          reason:
-              'The directory must use the independent course teacher list.',
-        );
 
-        final teacherB = find.byKey(const ValueKey('teacher-directory-12'));
-        await _tapAndSettle(tester, teacherB);
-        expect(find.text('相談する資料を選択'), findsNothing);
-        expect(fixture.consultations, [
-          {'peerAccountId': 12},
-        ]);
-        expect(fixture.readConversationIds, [512]);
-        expect(find.text('先生に質問：B先生'), findsOneWidget);
-        expect(find.text('返信: 会話512'), findsOneWidget);
-        expect(find.text('山田先生（表示名）'), findsOneWidget);
-        expect(find.text('先生'), findsNothing);
-        expect(
-          tester.getTopLeft(find.text('山田先生（表示名）')).dx,
-          lessThan(tester.getTopLeft(find.text('返信: 会話512')).dx),
-          reason: 'The teacher name belongs outside the incoming bubble.',
-        );
-        expect(tester.takeException(), isNull);
-        await tester.pumpWidget(const SizedBox.shrink());
+          final teacherB = find.byKey(const ValueKey('teacher-directory-12'));
+          await _tapAndSettle(tester, teacherB);
+          expect(find.text('相談する資料を選択'), findsNothing);
+          expect(fixture.consultations, [
+            {'peerAccountId': 12},
+          ]);
+          expect(fixture.readConversationIds, [512]);
+          expect(find.text('先生に質問：B先生'), findsOneWidget);
+          expect(find.text('返信: 会話512'), findsOneWidget);
+          expect(find.text('山田先生（表示名）'), findsOneWidget);
+          expect(find.text('先生'), findsNothing);
+          expect(
+            tester.getTopLeft(find.text('山田先生（表示名）')).dx,
+            lessThan(tester.getTopLeft(find.text('返信: 会話512')).dx),
+            reason: 'The teacher name belongs outside the incoming bubble.',
+          );
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox.shrink());
         },
       );
 
@@ -1433,7 +1439,7 @@ void main() {
         );
         expect(find.text('教室なしで学ぶPython'), findsWidgets);
         expect(find.text('動画がありません'), findsNothing);
-        expect(find.text('先生に相談'), findsOneWidget);
+        expect(find.text('先生に相談'), findsNothing);
 
         await _selectStudentSection(tester, 'テスト');
         expect(find.textContaining('時間制限なし'), findsWidgets);
@@ -1446,7 +1452,9 @@ void main() {
         await _tapAndSettle(tester, find.text('A. [1, 2]'));
         await _selectStudentSection(tester, 'テスト');
         expect(
-          tester.widget<CheckboxListTile>(find.byType(CheckboxListTile).first).value,
+          tester
+              .widget<CheckboxListTile>(find.byType(CheckboxListTile).first)
+              .value,
           isTrue,
         );
         expect(
@@ -1484,102 +1492,26 @@ void main() {
         expect(find.text('公開TypeScript教材'), findsWidgets);
         expect(find.textContaining('教室なしで学ぶTypeScript'), findsWidgets);
         expect(find.text('教材がありません'), findsNothing);
-        expect(find.byKey(const ValueKey('DOCUMENT:201')), findsOneWidget);
+        expect(find.text('教材を開く'), findsWidgets);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox.shrink());
       });
 
-      testWidgets(
-        'two resource teachers keep distinct conversation IDs when revisited',
-        (tester) async {
-          final fixture = _StudentApiFixture();
-          await _mountStudent(tester, fixture, viewport.size);
-          const selections = [
-            (teacher: 'A先生', account: 11, conversation: 301),
-            (teacher: 'B先生', account: 12, conversation: 302),
-            (teacher: 'A先生', account: 11, conversation: 301),
-          ];
-
-          for (var index = 0; index < selections.length; index++) {
-            final selection = selections[index];
-            await _selectStudentSection(tester, 'AI教室');
-            // The consultation button stays busy while the modal is open.
-            // Wait for its entrance animation, not for every spinner to stop.
-            await tester.ensureVisible(find.text('先生に相談'));
-            await tester.tap(find.text('先生に相談'));
-            await tester.pump();
-            await tester.pump(const Duration(milliseconds: 300));
-            final dialog = find.byType(AlertDialog);
-            expect(dialog, findsOneWidget);
-            expect(
-              find.descendant(of: dialog, matching: find.text('A先生')),
-              findsOneWidget,
-            );
-            expect(
-              find.descendant(of: dialog, matching: find.text('B先生')),
-              findsOneWidget,
-            );
-            final bounds = tester.getRect(dialog);
-            expect(bounds.left, greaterThanOrEqualTo(0));
-            expect(bounds.right, lessThanOrEqualTo(viewport.size.width));
-            expect(bounds.top, greaterThanOrEqualTo(0));
-            expect(bounds.bottom, lessThanOrEqualTo(viewport.size.height));
-            final choice = find.descendant(
-              of: dialog,
-              matching: find.text(selection.teacher),
-            );
-            expect(choice.hitTestable(), findsOneWidget);
-            await _tapAndSettle(tester, choice);
-
-            expect(find.text('先生に質問：${selection.teacher}'), findsOneWidget);
-            expect(
-              find.text('返信: 会話${selection.conversation}'),
-              findsOneWidget,
-            );
-            final otherConversation = selection.conversation == 301 ? 302 : 301;
-            expect(find.text('返信: 会話$otherConversation'), findsNothing);
-            expect(fixture.readConversationIds.last, selection.conversation);
-
-            final message = '${selection.teacher}への質問$index';
-            await tester.enterText(find.byType(TextField), message);
-            await _tapAndSettle(tester, find.text('先生へ送信'));
-            expect(fixture.sentMessages.last, {
-              'conversationId': selection.conversation,
-              'contentType': 1,
-              'content': message,
-            });
-            expect(find.text(message), findsOneWidget);
-            expect(tester.takeException(), isNull);
-          }
-          expect(fixture.consultations, [
-            for (final selection in selections)
-              {
-                'resourceType': 'VIDEO',
-                'resourceId': 101,
-                'peerAccountId': selection.account,
-              },
-          ]);
-          expect(fixture.readConversationIds, [301, 302, 301]);
-          await tester.pumpWidget(const SizedBox.shrink());
-        },
-      );
-
-      testWidgets(
-        'empty resource teachers show an empty state without creating a chat',
-        (tester) async {
-          final fixture = _StudentApiFixture(teachers: const []);
-          await _mountStudent(tester, fixture, viewport.size);
-          await _selectStudentSection(tester, 'AI教室');
-          await _tapAndSettle(tester, find.text('先生に相談'));
-
-          expect(find.textContaining('現在相談できる担当の先生はいません'), findsOneWidget);
-          expect(find.byType(AlertDialog), findsNothing);
-          expect(fixture.consultations, isEmpty);
-          expect(fixture.readConversationIds, isEmpty);
+      testWidgets('resource pages omit consultation and global banners', (
+        tester,
+      ) async {
+        final fixture = _StudentApiFixture(teachers: const []);
+        await _mountStudent(tester, fixture, viewport.size);
+        for (final section in ['AI教室', 'コード採点', 'テスト']) {
+          await _selectStudentSection(tester, section);
+          expect(find.text('先生に相談'), findsNothing);
+          expect(find.textContaining('現在相談できる担当の先生はいません'), findsNothing);
+          expect(find.text('Eden AI プログラミング教師'), findsNothing);
           expect(tester.takeException(), isNull);
-          await tester.pumpWidget(const SizedBox.shrink());
-        },
-      );
+        }
+        expect(fixture.consultations, isEmpty);
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
     });
   }
 }

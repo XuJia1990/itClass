@@ -30,6 +30,8 @@ class _StudentHomePageState extends State<StudentHomePage> {
   bool _teacherDirectoryLoading = false;
   String? _teacherDirectoryError;
   List<CodeAssignment> _apiCodeAssignments = const [];
+  String? _codeLanguage;
+  final Map<int, String> _codeDrafts = {};
   String? _selectedLanguage;
   bool _languageSelectionInitialized = false;
   StudentProfile? _selectedChatContact;
@@ -38,7 +40,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
   bool _directoryConsultationBusy = false;
   bool _directoryCreating = false;
   String? _directoryError;
-  final Map<String, Future<int>> _resourceChatCreations = {};
   final Map<int, StudentProfile> _pendingChatContacts = {};
   int _chatRequestId = 0;
   int _contactsRequestId = 0;
@@ -213,7 +214,65 @@ class _StudentHomePageState extends State<StudentHomePage> {
       _directoryTeacherKey == null &&
       _selectedChatContact != null;
 
-  List<CodeAssignment> get _codeAssignmentsForScoring => _apiCodeAssignments;
+  List<String> get _codeLanguages =>
+      _uniqueLanguages(_apiCodeAssignments.map((a) => a.level));
+
+  List<CodeAssignment> get _codeAssignmentsForScoring => _apiCodeAssignments
+      .where(
+        (a) =>
+            _codeLanguage != null &&
+            a.level.trim().toUpperCase() == _codeLanguage!.toUpperCase(),
+      )
+      .toList();
+
+  void _saveCodeDraft() {
+    final id = _codeAssignmentsForScoring
+        .elementAtOrNull(_selectedCodeAssignment)
+        ?.id;
+    if (id != null) _codeDrafts[id] = _codeInput.text;
+  }
+
+  void _selectCode(int index) {
+    _saveCodeDraft();
+    _selectedCodeAssignment = index;
+    final assignment = _codeAssignmentsForScoring.elementAtOrNull(index);
+    _codeInput.text = assignment == null
+        ? ''
+        : _codeDrafts[assignment.id] ?? assignment.starterCode;
+  }
+
+  Widget _codeLanguageSelector() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      const Text(
+        '学習言語',
+        style: TextStyle(color: _AppPalette.muted, fontWeight: FontWeight.w700),
+      ),
+      const SizedBox(height: 8),
+      DropdownButtonFormField<String>(
+        key: ValueKey('code-language-$_codeLanguage'),
+        initialValue: _codeLanguage,
+        isExpanded: true,
+        decoration: const InputDecoration(prefixIcon: Icon(Icons.code_rounded)),
+        hint: const Text('公開中の練習はありません'),
+        items: [
+          for (final language in _codeLanguages)
+            DropdownMenuItem(value: language, child: Text(language)),
+        ],
+        onChanged: _dataLoading
+            ? null
+            : (language) => setState(() {
+                _saveCodeDraft();
+                _codeLanguage = language;
+                _selectedCodeAssignment = 0;
+                final first = _codeAssignmentsForScoring.firstOrNull;
+                _codeInput.text = first == null
+                    ? ''
+                    : _codeDrafts[first.id] ?? first.starterCode;
+              }),
+      ),
+    ],
+  );
 
   @override
   void initState() {
@@ -238,8 +297,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
   Widget build(BuildContext context) {
     final mobile = MediaQuery.sizeOf(context).width < 720;
     return _ResponsiveShell(
-      title: 'Eden AI プログラミング教師',
-      subtitle: '学生画面：動画学習、文書学習、問題演習、テスト進捗',
       profileName: '${ItClassSession.current?.displayName ?? ''}（学生）',
       profileRole: '学生',
       activeIndex: StudentSection.values.indexOf(_section),
@@ -261,6 +318,11 @@ class _StudentHomePageState extends State<StudentHomePage> {
       middle: _studentMiddlePanel(context),
       content: Column(
         children: [
+          if (mobile && _section == StudentSection.codeScoring)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: _codeLanguageSelector(),
+            ),
           if (mobile && _section == StudentSection.learning)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -294,7 +356,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
           ),
         ],
       ),
-      topActions: const [],
     );
   }
 
@@ -506,13 +567,15 @@ class _StudentHomePageState extends State<StudentHomePage> {
         return _teacherDirectoryPanel();
       case StudentSection.codeScoring:
         return _HistoryPanel(
-          title: 'コード課題',
+          title: '練習',
           children: [
+            _codeLanguageSelector(),
+            const Divider(height: 24, color: _AppPalette.line),
             if (_codeAssignmentsForScoring.isEmpty)
               const _InlineNotice(
                 tone: _NoticeTone.warning,
-                title: 'コード課題がありません',
-                message: '公開中のコード課題はまだありません。公開されるとここに表示されます。',
+                title: '練習がありません',
+                message: '公開中の練習はまだありません。公開されるとここに表示されます。',
               ),
             for (var i = 0; i < _codeAssignmentsForScoring.length; i++)
               _CompactListCard(
@@ -522,8 +585,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
                     '${_codeAssignmentsForScoring[i].level} · ${_codeAssignmentsForScoring[i].status}',
                 detail: _codeAssignmentsForScoring[i].summary,
                 onTap: () => setState(() {
-                  _selectedCodeAssignment = i;
-                  _codeInput.text = _codeAssignmentsForScoring[i].starterCode;
+                  _selectCode(i);
                 }),
               ),
           ],
@@ -567,28 +629,17 @@ class _StudentHomePageState extends State<StudentHomePage> {
           return const Center(
             child: _InlineNotice(
               tone: _NoticeTone.warning,
-              title: 'コード課題がありません',
-              message: '公開中のコード課題はまだありません。公開されるとここに表示されます。',
+              title: '練習がありません',
+              message: '公開中の練習はまだありません。公開されるとここに表示されます。',
             ),
           );
         }
         final assignment = _codeAssignmentsForScoring[_selectedCodeAssignment];
-        return Column(
-          children: [
-            if (assignment.id != null)
-              _resourceConsultation(
-                'QUESTION',
-                assignment.id!,
-                assignment.title,
-              ),
-            Expanded(
-              child: _CodeScoringWorkspace(
-                assignment: assignment,
-                controller: _codeInput,
-                onScore: _scoreCode,
-              ),
-            ),
-          ],
+        return _CodeScoringWorkspace(
+          key: ValueKey('code-${assignment.id}'),
+          assignment: assignment,
+          controller: _codeInput,
+          onScore: _scoreCode,
         );
       case StudentSection.learning:
         if (_dataLoading &&
@@ -614,8 +665,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
                 onPositionSaved: (position, duration, ended) =>
                     _saveVideoProgress(video, position, duration, ended),
               ),
-              if (video.id != null)
-                _resourceConsultation('VIDEO', video.id!, video.title),
             ],
           );
         }
@@ -638,14 +687,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
                     .toList();
               });
             },
-            consultationBuilder: (question) =>
-                question.courseVideoId == null || question.courseVideoId! <= 0
-                ? const SizedBox.shrink()
-                : _resourceConsultation(
-                    'VIDEO',
-                    question.courseVideoId!,
-                    question.lessonTitle,
-                  ),
           );
         }
         final lessons = _lessonsForLearning;
@@ -653,8 +694,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
         final lesson = lessons[_selectedLesson.clamp(0, lessons.length - 1)];
         return Column(
           children: [
-            if (lesson.id != null)
-              _resourceConsultation('DOCUMENT', lesson.id!, lesson.title),
             Expanded(
               child: _LearningWorkspace(
                 lesson: lesson,
@@ -691,12 +730,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
         }
         final examIndex = _selectedExamLesson.clamp(0, _apiExams.length - 1);
         final selectedExam = _apiExams[examIndex];
-        return Column(
-          children: [
-            _resourceConsultation('EXAM', selectedExam.id, selectedExam.title),
-            Expanded(child: _examContent(selectedExam)),
-          ],
-        );
+        return Column(children: [Expanded(child: _examContent(selectedExam))]);
       case StudentSection.askTeacher:
         return _teacherContent();
       case StudentSection.settings:
@@ -1008,34 +1042,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
     }
   }
 
-  Future<int> _getOrCreateResourceChat(
-    String type,
-    int id,
-    int peerAccountId,
-  ) async {
-    final key = '$type:$id:$peerAccountId';
-    final existing = _resourceChatCreations[key];
-    if (existing != null) return existing;
-    final request = ItClassApi.instance
-        .getOrCreateChat(
-          peerAccountId: peerAccountId,
-          resourceType: type,
-          resourceId: id,
-        )
-        .then((conversationId) {
-          if (conversationId <= 0) throw const ApiException('会話を作成できませんでした。');
-          return conversationId;
-        });
-    _resourceChatCreations[key] = request;
-    try {
-      return await request;
-    } finally {
-      if (identical(_resourceChatCreations[key], request)) {
-        _resourceChatCreations.remove(key);
-      }
-    }
-  }
-
   Widget _examContent(SchoolExamSummary selectedExam) {
     if (!selectedExam.isAvailable) {
       return const Center(
@@ -1120,20 +1126,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
       message: _selectedLanguage != null
           ? 'この条件に一致する公開リソースはありません。絞り込みを「すべて」に変更してください。'
           : '公開中の$resourceはまだありません。公開されるとここに表示されます。',
-    ),
-  );
-
-  Widget _resourceConsultation(String type, int id, String name) => Padding(
-    padding: const EdgeInsets.all(12),
-    child: _StudentResourceConsultationButton(
-      key: ValueKey('$type:$id'),
-      resourceType: type,
-      resourceId: id,
-      createConversation: (teacher) =>
-          _getOrCreateResourceChat(type, id, teacher.accountId),
-      onConversationCreated: (conversationId, teacher) => unawaited(
-        _openResourceConversation(conversationId, teacher, type, id, name),
-      ),
     ),
   );
 
@@ -1462,18 +1454,26 @@ class _StudentHomePageState extends State<StudentHomePage> {
         if (section != null) load('会話履歴', _refreshTeacherMessages, (_) {}),
       ],
       if (needs(StudentSection.codeScoring))
-        load('コード課題', ItClassApi.instance.codeAssignments, (value) {
-          final selected = _apiCodeAssignments
+        load('練習', ItClassApi.instance.codeAssignments, (value) {
+          final selected = _codeAssignmentsForScoring
               .elementAtOrNull(_selectedCodeAssignment)
               ?.id;
+          _saveCodeDraft();
           _apiCodeAssignments = value;
-          final index = value.indexWhere(
-            (assignment) => assignment.id == selected,
+          final languages = _codeLanguages;
+          if (!languages.contains(_codeLanguage)) {
+            _codeLanguage = languages.firstOrNull;
+          }
+          final index = _codeAssignmentsForScoring.indexWhere(
+            (a) => a.id == selected,
           );
           _selectedCodeAssignment = index < 0 ? 0 : index;
-          if (_codeInput.text.isEmpty && value.isNotEmpty) {
-            _codeInput.text = value[_selectedCodeAssignment].starterCode;
-          }
+          final assignment = _codeAssignmentsForScoring.elementAtOrNull(
+            _selectedCodeAssignment,
+          );
+          _codeInput.text = assignment == null
+              ? ''
+              : _codeDrafts[assignment.id] ?? assignment.starterCode;
         }),
     ]);
     _dataLoads--;
@@ -1654,30 +1654,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
         setState(() => _aiLoading = false);
       }
     }
-  }
-
-  Future<void> _openResourceConversation(
-    int conversationId,
-    ResourceTeacher teacher,
-    String resourceType,
-    int resourceId,
-    String resourceName,
-  ) async {
-    if (!mounted) return;
-    final contact = StudentProfile(
-      _resourceTeacherName(teacher),
-      'リソース相談',
-      '質問を送信できます。',
-      accountId: teacher.accountId,
-      accountNo: teacher.accountNo,
-      conversationId: conversationId,
-      resourceType: resourceType,
-      resourceId: resourceId,
-      resourceName: resourceName,
-      email: '',
-      phone: '',
-    );
-    await _openTeacherContact(contact);
   }
 
   Future<void> _openTeacherContact(StudentProfile contact) async {
@@ -2015,162 +1991,12 @@ String _resourceTeacherName(ResourceTeacher teacher) {
   return '担当の先生';
 }
 
-class _StudentResourceConsultationButton extends StatefulWidget {
-  const _StudentResourceConsultationButton({
-    super.key,
-    required this.resourceType,
-    required this.resourceId,
-    required this.createConversation,
-    required this.onConversationCreated,
-  });
-
-  final String resourceType;
-  final int resourceId;
-  final Future<int> Function(ResourceTeacher teacher) createConversation;
-  final void Function(int conversationId, ResourceTeacher teacher)
-  onConversationCreated;
-
-  @override
-  State<_StudentResourceConsultationButton> createState() =>
-      _StudentResourceConsultationButtonState();
-}
-
-class _StudentResourceConsultationButtonState
-    extends State<_StudentResourceConsultationButton> {
-  bool _busy = false;
-  bool _choosingTeacher = false;
-  String? _error;
-
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      OutlinedButton.icon(
-        onPressed: _busy ? null : _consult,
-        icon: _busy && !_choosingTeacher
-            ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Icon(Icons.chat_bubble_outline_rounded),
-        label: Text(
-          _choosingTeacher
-              ? '先生を選択'
-              : _busy
-              ? '読み込み中…'
-              : '先生に相談',
-        ),
-      ),
-      if (_error != null)
-        Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Text(
-            _error!,
-            style: const TextStyle(color: _AppPalette.coral),
-          ),
-        ),
-    ],
-  );
-
-  Future<void> _consult() async {
-    if (_busy) return;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      final teachers = await ItClassApi.instance.resourceTeachers(
-        widget.resourceType,
-        widget.resourceId,
-      );
-      if (!mounted) return;
-      final available = {
-        for (final teacher in teachers)
-          if (teacher.accountId > 0 && teacher.status == 0)
-            teacher.accountId: teacher,
-      }.values.toList();
-      if (available.isEmpty) {
-        setState(() => _error = '現在相談できる担当の先生はいません。時間をおいて再確認してください。');
-        return;
-      }
-      setState(() => _choosingTeacher = true);
-      final teacher = await showDialog<ResourceTeacher>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('相談する先生を選択'),
-          content: SizedBox(
-            width: 400,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 400),
-              child: ListView(
-                shrinkWrap: true,
-                children: [
-                  for (final teacher in available)
-                    ListTile(
-                      leading: teacher.avatar.isEmpty
-                          ? const CircleAvatar(
-                              child: Icon(Icons.person_outline),
-                            )
-                          : ClipOval(
-                              child: Image.network(
-                                teacher.avatar,
-                                width: 40,
-                                height: 40,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, _, _) => const CircleAvatar(
-                                  child: Icon(Icons.person_outline),
-                                ),
-                              ),
-                            ),
-                      title: Text(_resourceTeacherName(teacher)),
-                      subtitle: teacher.accountNo.isEmpty
-                          ? null
-                          : Text(teacher.accountNo),
-                      onTap: () => Navigator.of(dialogContext).pop(teacher),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('キャンセル'),
-            ),
-          ],
-        ),
-      );
-      if (!mounted) return;
-      setState(() => _choosingTeacher = false);
-      if (teacher == null) return;
-      final conversationId = await widget.createConversation(teacher);
-      if (!mounted) return;
-      if (conversationId <= 0) throw const ApiException('会話を作成できませんでした。');
-      widget.onConversationCreated(conversationId, teacher);
-    } catch (error) {
-      if (mounted) {
-        setState(() => _error = '相談を開始できませんでした：${userFacingError(error)}');
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _choosingTeacher = false;
-        });
-      }
-    }
-  }
-}
-
 class _StudentPracticeWorkspace extends StatelessWidget {
   const _StudentPracticeWorkspace({
     required this.questions,
-    required this.consultationBuilder,
     required this.onSaved,
   });
   final List<SchoolPracticeQuestion> questions;
-  final Widget Function(SchoolPracticeQuestion) consultationBuilder;
   final ValueChanged<SchoolPracticeAnswer> onSaved;
 
   @override
@@ -2191,7 +2017,6 @@ class _StudentPracticeWorkspace extends StatelessWidget {
           question: questions[i],
           onSaved: onSaved,
         ),
-        consultationBuilder(questions[i]),
         const SizedBox(height: 12),
       ],
     ],

@@ -2,8 +2,6 @@ part of '../main.dart';
 
 class _ResponsiveShell extends StatelessWidget {
   const _ResponsiveShell({
-    required this.title,
-    required this.subtitle,
     required this.profileName,
     required this.profileRole,
     required this.items,
@@ -12,12 +10,9 @@ class _ResponsiveShell extends StatelessWidget {
     required this.onLogout,
     required this.middle,
     required this.content,
-    required this.topActions,
     this.notificationIndices = const {},
   });
 
-  final String title;
-  final String subtitle;
   final String profileName;
   final String profileRole;
   final List<MenuItem> items;
@@ -26,7 +21,6 @@ class _ResponsiveShell extends StatelessWidget {
   final VoidCallback onLogout;
   final Widget middle;
   final Widget content;
-  final List<Widget> topActions;
   final Set<int> notificationIndices;
 
   @override
@@ -58,14 +52,7 @@ class _ResponsiveShell extends StatelessWidget {
                   ),
                   child: middle,
                 ),
-                Expanded(
-                  child: _ContentFrame(
-                    title: title,
-                    subtitle: subtitle,
-                    actions: topActions,
-                    child: content,
-                  ),
-                ),
+                Expanded(child: SafeArea(child: content)),
               ],
             ),
           );
@@ -74,9 +61,7 @@ class _ResponsiveShell extends StatelessWidget {
         return Scaffold(
           backgroundColor: _AppPalette.canvas,
           appBar: AppBar(
-            title: Text(title),
             actions: [
-              ...topActions,
               if (!tablet)
                 Builder(
                   builder: (context) => IconButton(
@@ -515,69 +500,6 @@ class _CompactListCard extends StatelessWidget {
   }
 }
 
-class _ContentFrame extends StatelessWidget {
-  const _ContentFrame({
-    required this.title,
-    required this.subtitle,
-    required this.actions,
-    required this.child,
-  });
-
-  final String title;
-  final String subtitle;
-  final List<Widget> actions;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Column(
-        children: [
-          Container(
-            height: 76,
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(bottom: BorderSide(color: _AppPalette.line)),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w900,
-                          color: _AppPalette.ink,
-                        ),
-                      ),
-                      Text(
-                        subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: _AppPalette.muted),
-                      ),
-                    ],
-                  ),
-                ),
-                ...actions,
-              ],
-            ),
-          ),
-          Expanded(
-            child: Container(color: _AppPalette.canvas, child: child),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _ChatWorkspace extends StatelessWidget {
   const _ChatWorkspace({
     required this.title,
@@ -746,6 +668,7 @@ class _MessageBubble extends StatelessWidget {
 
 class _CodeScoringWorkspace extends StatefulWidget {
   const _CodeScoringWorkspace({
+    super.key,
     required this.assignment,
     required this.controller,
     required this.onScore,
@@ -770,7 +693,7 @@ class _CodeScoringWorkspaceState extends State<_CodeScoringWorkspace> {
       children: [
         _SectionHeader(
           icon: Icons.grading_rounded,
-          title: 'コード課題：${widget.assignment.title}',
+          title: '練習：${widget.assignment.title}',
           subtitle: 'コードを書いて提出し、自動採点・減点理由・標準答案を確認します。',
         ),
         const SizedBox(height: 16),
@@ -778,6 +701,10 @@ class _CodeScoringWorkspaceState extends State<_CodeScoringWorkspace> {
         const SizedBox(height: 16),
         TextField(
           controller: widget.controller,
+          onChanged: (_) {
+            if (_result != null) setState(() => _result = null);
+          },
+          enabled: !_scoring,
           minLines: 14,
           maxLines: 22,
           style: const TextStyle(fontFamily: 'monospace'),
@@ -803,6 +730,13 @@ class _CodeScoringWorkspaceState extends State<_CodeScoringWorkspace> {
         ),
         if (_result != null) ...[
           const SizedBox(height: 18),
+          Text(
+            _result!.gradingMethod == 'REFERENCE_MATCH'
+                ? '標準答案との一致を確認しました。'
+                : 'AIによるコードレビューです。コードの実行検証は行っていません。',
+            style: const TextStyle(color: _AppPalette.muted),
+          ),
+          const SizedBox(height: 8),
           _ScoreCard(result: _result!),
         ],
       ],
@@ -824,7 +758,7 @@ class _CodeScoringWorkspaceState extends State<_CodeScoringWorkspace> {
         SnackBar(
           content: Text(
             error is ApiException && error.code == 1004002046
-                ? 'この言語の自動採点は未対応です。テストから提出するか、担当の先生へ相談してください。'
+                ? 'この練習の言語には現在対応していません。'
                 : '採点に失敗しました：${userFacingError(error)}',
           ),
         ),

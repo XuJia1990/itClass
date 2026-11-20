@@ -786,7 +786,7 @@ class _CodeAssignmentBrief extends StatelessWidget {
               spacing: 10,
               runSpacing: 8,
               children: [
-                _StatusPill(assignment.level),
+                _StatusPill(_learningLanguageLabel(assignment.level)),
                 _StatusPill(assignment.status),
               ],
             ),
@@ -1078,7 +1078,7 @@ class _LearningWorkspaceState extends State<_LearningWorkspace> {
           _SectionHeader(
             icon: Icons.menu_book_rounded,
             title: lesson.title,
-            subtitle: '${lesson.level} · ${lesson.summary}',
+            subtitle: '${_learningLanguageLabel(lesson.level)} · ${lesson.summary}',
           ),
           const SizedBox(height: 16),
           Card(
@@ -1358,7 +1358,7 @@ class _VideoProgressCardState extends State<_VideoProgressCard> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${video.category} · ${video.duration}',
+                        '${_learningLanguageLabel(video.category)} · ${video.duration}',
                         style: const TextStyle(color: _AppPalette.muted),
                       ),
                       const SizedBox(height: 8),
@@ -2812,7 +2812,7 @@ class _UploadLanguageDisplay extends StatelessWidget {
   Widget build(BuildContext context) => InputDecorator(
     key: const ValueKey('upload-language-display'),
     decoration: const InputDecoration(labelText: '学習言語'),
-    child: Text(language.isEmpty ? '未選択' : language),
+    child: Text(language.isEmpty ? '未選択' : _learningLanguageLabel(language)),
   );
 }
 

@@ -2027,7 +2027,7 @@ List<ChatMessage> chatMessagesFromAiQuestionJson(Map<String, dynamic> json) {
   ];
 }
 
-const aiAnswerPendingTeacherMessage = '先生による確認が必要です。回答をお待ちください。';
+const aiAnswerPendingTeacherMessage = 'ご質問を先生にお伝えします。回答まで、しばらくお待ちください。';
 
 String aiAskAnswerFromJson(Map<String, dynamic> json) {
   if (_asInt(json['status']) == 20) return aiAnswerPendingTeacherMessage;

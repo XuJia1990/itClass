@@ -257,7 +257,10 @@ class _StudentHomePageState extends State<StudentHomePage> {
         hint: const Text('公開中の練習はありません'),
         items: [
           for (final language in _codeLanguages)
-            DropdownMenuItem(value: language, child: Text(language)),
+            DropdownMenuItem(
+              value: language,
+              child: Text(_learningLanguageLabel(language)),
+            ),
         ],
         onChanged: _dataLoading
             ? null
@@ -386,7 +389,10 @@ class _StudentHomePageState extends State<StudentHomePage> {
           hint: Text(_dataLoading ? '読み込み中…' : '公開中のコースはありません'),
           items: [
             for (final language in languages)
-              DropdownMenuItem(value: language, child: Text(language)),
+              DropdownMenuItem(
+                value: language,
+                child: Text(_learningLanguageLabel(language)),
+              ),
           ],
           onChanged: _dataLoading || languages.isEmpty
               ? null
@@ -481,7 +487,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
                   selected: _selectedLesson == i,
                   title: _videos[i].title,
                   subtitle:
-                      '${_videos[i].category} · ${(_progressFor(_videos[i]) * 100).round()}%',
+                      '${_learningLanguageLabel(_videos[i].category)} · ${(_progressFor(_videos[i]) * 100).round()}%',
                   detail: _videos[i].description,
                   onTap: () => setState(() => _selectedLesson = i),
                 ),
@@ -497,7 +503,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
                 _CompactListCard(
                   selected: _selectedLesson == i,
                   title: _lessonsForLearning[i].title,
-                  subtitle: _lessonsForLearning[i].level,
+                  subtitle: _learningLanguageLabel(_lessonsForLearning[i].level),
                   detail: _lessonsForLearning[i].summary,
                   onTap: () => setState(() => _selectedLesson = i),
                 ),
@@ -514,7 +520,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
                   selected: _selectedPracticeChapter == i,
                   title: _practiceLessonGroups[i].title,
                   subtitle:
-                      '${_practiceLessonGroups[i].language} · 第${_practiceLessonGroups[i].chapterNo}課 · ${_practiceLessonGroups[i].questions.where((q) => q.answer?.hasResult == true).length}/${_practiceLessonGroups[i].questions.length}問確認済み',
+                      '${_learningLanguageLabel(_practiceLessonGroups[i].language)} · 第${_practiceLessonGroups[i].chapterNo}課 · ${_practiceLessonGroups[i].questions.where((q) => q.answer?.hasResult == true).length}/${_practiceLessonGroups[i].questions.length}問確認済み',
                   detail: _practiceLessonGroups[i].questions
                       .map((question) => question.title)
                       .join(' / '),
@@ -551,7 +557,9 @@ class _StudentHomePageState extends State<StudentHomePage> {
                     selected: _selectedExamLesson == i,
                     title: _apiExams[i].title,
                     subtitle: [
-                      _examProgrammingLanguage(_apiExams[i]),
+                      _learningLanguageLabel(
+                        _examProgrammingLanguage(_apiExams[i]),
+                      ),
                       _apiExams[i].ownerTeacherName,
                     ].where((part) => part.trim().isNotEmpty).join(' · '),
                     detail: _apiExams[i].latestScore == null
@@ -582,7 +590,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
                 selected: _selectedCodeAssignment == i,
                 title: _codeAssignmentsForScoring[i].title,
                 subtitle:
-                    '${_codeAssignmentsForScoring[i].level} · ${_codeAssignmentsForScoring[i].status}',
+                    '${_learningLanguageLabel(_codeAssignmentsForScoring[i].level)} · ${_codeAssignmentsForScoring[i].status}',
                 detail: _codeAssignmentsForScoring[i].summary,
                 onTap: () => setState(() {
                   _selectCode(i);
@@ -1304,10 +1312,22 @@ class _StudentHomePageState extends State<StudentHomePage> {
       );
       if (!mounted || attemptId != _examAttemptId) return;
       setState(() => _examSubmitted = true);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('テストを提出しました。採点結果は「成績履歴」で確認できます。'),
+            duration: Duration(seconds: 5),
+          ),
+        );
       await _refreshExamResult();
     } catch (error) {
       if (!mounted || attemptId != _examAttemptId) return;
-      setState(() => _examError = '提出に失敗しました：${userFacingError(error)}');
+      final message = '提出に失敗しました：${userFacingError(error)}';
+      setState(() => _examError = message);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(message)));
     } finally {
       if (mounted && attemptId == _examAttemptId) {
         setState(() => _examSubmitting = false);
@@ -1933,7 +1953,7 @@ class _StudentTeacherDirectoryEntry {
 
   String get languageLabel {
     final languages = _uniqueLanguages(teacher.programmingLanguages);
-    return '担当言語：${languages.isEmpty ? '言語未設定' : languages.join(' / ')}';
+    return '担当言語：${languages.isEmpty ? '言語未設定' : languages.map(_learningLanguageLabel).join(' / ')}';
   }
 
   int get unreadCount => conversations.fold(
@@ -2007,7 +2027,7 @@ class _StudentPracticeWorkspace extends StatelessWidget {
         icon: Icons.account_tree_rounded,
         title: questions.first.lessonTitle,
         subtitle:
-            '${questions.first.programmingLanguage} · ${questions.where((q) => q.answer?.hasResult == true).length}/${questions.length}問確認済み · ${questions.where((q) => q.answer?.correct == true).length}問正解',
+            '${_learningLanguageLabel(questions.first.programmingLanguage)} · ${questions.where((q) => q.answer?.hasResult == true).length}/${questions.length}問確認済み · ${questions.where((q) => q.answer?.correct == true).length}問正解',
       ),
       const SizedBox(height: 16),
       for (var i = 0; i < questions.length; i++) ...[

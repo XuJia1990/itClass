@@ -1,5 +1,8 @@
 part of '../main.dart';
 
+String _learningLanguageLabel(String value) =>
+    value.trim().toUpperCase() == 'FLUTTER' ? 'Flutter' : value.trim();
+
 List<String> _uniqueLanguages(Iterable<String> values) {
   final result = <String, String>{};
   for (final value in values) {
@@ -34,7 +37,10 @@ class _LearningLanguageFilter extends StatelessWidget {
     items: [
       if (includeAll) const DropdownMenuItem(value: '', child: Text('すべて')),
       for (final language in _uniqueLanguages([...languages, ?value]))
-        DropdownMenuItem(value: language, child: Text(language)),
+        DropdownMenuItem(
+          value: language,
+          child: Text(_learningLanguageLabel(language)),
+        ),
     ],
     onChanged: !includeAll && languages.isEmpty
         ? null
@@ -250,7 +256,7 @@ class _TeacherGradingWorkspaceState extends State<_TeacherGradingWorkspace>
               '${row['studentRealName'] ?? row['studentAccountNo'] ?? ''} · ${row['examTitle'] ?? ''}',
             ),
             subtitle: Text(
-              '${row['programmingLanguage'] ?? ''} · 第${row['attemptNo'] ?? 1}回 · ${_attemptStatus(row['status'])}\n${row['totalScore'] ?? '-'} / ${row['paperTotalScore'] ?? '-'}点',
+              '${_learningLanguageLabel(_asString(row['programmingLanguage']))} · 第${row['attemptNo'] ?? 1}回 · ${_attemptStatus(row['status'])}\n${row['totalScore'] ?? '-'} / ${row['paperTotalScore'] ?? '-'}点',
             ),
             trailing: IconButton(
               tooltip: _asInt(row['status']) == 20 ? '採点する' : '答案を確認',
@@ -615,7 +621,7 @@ class _StudentExamHistoryWorkspaceState
           child: ListTile(
             title: Text('${row['examTitle'] ?? ''}'),
             subtitle: Text(
-              '${row['programmingLanguage'] ?? ''} · 第${row['attemptNo'] ?? 1}回 · ${_attemptStatus(row['status'])}\n${_asInt(row['status']) == 30 ? '${row['totalScore']} / ${row['paperTotalScore']}点' : '最終得点は採点完了後に表示されます。'}',
+              '${_learningLanguageLabel(_asString(row['programmingLanguage']))} · 第${row['attemptNo'] ?? 1}回 · ${_attemptStatus(row['status'])}\n${_asInt(row['status']) == 30 ? '${row['totalScore']} / ${row['paperTotalScore']}点' : '最終得点は採点完了後に表示されます。'}',
             ),
             trailing: IconButton(
               tooltip: '採点結果を表示',

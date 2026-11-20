@@ -416,7 +416,7 @@ class _TeacherMaterialManagementState extends State<_TeacherMaterialManagement>
                 subtitle: Text(
                   [
                     '${_asInt(item['status']) == 0 ? '公開中' : '停用中'} · '
-                        '${_asString(item['programmingLanguage'])} · '
+                        '${_learningLanguageLabel(_asString(item['programmingLanguage']))} · '
                         '第${item['chapterNo']}章',
                     _asList(item['teachers'])
                         .map(
